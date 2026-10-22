@@ -1,6 +1,22 @@
 # tianquan-jianshen-web
 
-Stellar Enclosure frontend. All first-party modules start at **0.0.1**.
+React console for Jianshen IAM governance and RBAC3 authorization management. All first-party modules start at **0.0.1**.
+
+## Pages and capabilities
+
+| Area | Function |
+|---|---|
+| IAM directory | Manage users, organizations/positions, businesses and applications; browse admitted resource catalogs. |
+| Roles and permissions | Maintain roles/inheritance, permissions, role-resource grants and user-role assignments. |
+| Governance | Edit constraints and management policies; inspect their effect through authorization and role-change simulation. |
+| Role activation | Inspect available activation candidates and replace the current user's active role set. |
+| Operations | Inspect audit records, runtime publication state and recovery/retry information. |
+
+[Navigation](src/app/navigation.ts) combines the [governance](src/features/governance.routes.tsx), [authorization](src/features/authorization.routes.tsx) and [runtime](src/features/runtime.routes.tsx) descriptors. [Routing](src/app/router.tsx) filters navigation and guards pages against the authorization state. The usual role-management entry is `/iam/roles`; the actual landing route is selected from the current user's allowed local routes.
+
+The console consumes [tianquan-jianshen-service](https://github.com/Stellar-Enclosure/tianquan-jianshen-service), the shared Web UI package and the [Jianshen React SDK](https://github.com/Stellar-Enclosure/web-sdk/tree/main/packages/stellar-enclosure-tianquan-jianshen-react-sdk). Browser authentication uses Edge registration `edge-jianshen`; the SDK supplies typed authorization, activation and UI guards while the server independently enforces decisions. Shoubing user/password/client/key administration belongs to [tianquan-shoubing-web](https://github.com/Stellar-Enclosure/tianquan-shoubing-web).
+
+This is a static SPA that can run standalone or as a portal child. Resource reporting and bundle/conformance checks are available in [package.json](package.json); browser E2E commands are separate from ordinary build/test commands.
 
 ## Build and test
 
