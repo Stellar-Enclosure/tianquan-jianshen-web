@@ -5,15 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit --pretty false && vite build",
+    "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit --pretty false",
     "test": "vitest run",
-    "test:report": "node --test scripts/report-rbac-resources.test.mjs",
-    "report:resources": "node scripts/report-rbac-resources.mjs",
     "verify:bundle": "node scripts/verify-browser-bundle.mjs",
     "verify:conformance": "node scripts/verify-tianquan-jianshen-conformance.mjs",
     "lint": "eslint .",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:external": "playwright test --config playwright.external.config.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
@@ -52,5 +51,10 @@
   "homepage": "https://github.com/Stellar-Enclosure/tianquan-jianshen-web#readme",
   "bugs": {
     "url": "https://github.com/Stellar-Enclosure/tianquan-jianshen-web/issues"
+  },
+  "overrides": {
+    "react-i18next": {
+      "typescript": "$typescript"
+    }
   }
 }

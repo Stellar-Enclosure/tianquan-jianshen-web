@@ -1,4 +1,6 @@
-import {type Rbac3Client, Rbac3Provider, Rbac3RequestError} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+vi.mock('../../permissions/FieldCatalog', () => ({useWritableFields: () => true, useWritableFieldKeys: () => true}))
+import {TestAuthorizationProvider} from '../../test/authorization'
+import {type Rbac3Client, Rbac3RequestError} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {fireEvent, render, screen} from '@testing-library/react'
 import {MemoryRouter} from 'react-router-dom'
 import {afterEach, describe, expect, it, vi} from 'vitest'
@@ -23,9 +25,9 @@ describe('authentication shell', () => {
     } as unknown as Rbac3Client
     render(
       <MemoryRouter>
-          <Rbac3Provider client={client}>
+          <TestAuthorizationProvider client={client}>
           <AuthenticationShell><div>READY CONTENT</div></AuthenticationShell>
-        </Rbac3Provider>
+        </TestAuthorizationProvider>
       </MemoryRouter>,
     )
 
@@ -52,9 +54,9 @@ describe('authentication shell', () => {
     const login = vi.spyOn(gatewayAuth, 'login').mockImplementation(() => {})
     render(
       <MemoryRouter>
-        <Rbac3Provider client={client}>
+        <TestAuthorizationProvider client={client}>
           <AuthenticationShell><div>READY CONTENT</div></AuthenticationShell>
-        </Rbac3Provider>
+        </TestAuthorizationProvider>
       </MemoryRouter>,
     )
 
@@ -68,7 +70,7 @@ describe('authentication shell', () => {
 describe('fixed deployment registration', () => {
   it('passes the configured alias to the installed client without tenant or issuer selectors', async () => {
     const navigate = vi.fn()
-    vi.stubEnv('VITE_OAUTH_REGISTRATION_ID', 'edge-deployment-child')
+    vi.stubEnv('VITE_OAUTH_APP_ALIAS', 'edge-deployment-child')
     vi.stubEnv('VITE_YUHENG_ORIGIN', '')
     vi.resetModules()
     vi.doUnmock('./gatewayAuth')
@@ -80,10 +82,8 @@ describe('fixed deployment registration', () => {
     try {
       const {gatewayAuth: configured} = await import('./gatewayAuth')
       configured.login()
-      configured.stepUp()
-      expect(navigate.mock.calls[0]?.[0]).toBe('/oauth2/authorization/edge-deployment-child')
-      expect(String(navigate.mock.calls[1]?.[0]).split('?')[0]).toBe('/oauth2/authorization/edge-deployment-child')
-      expect(String(navigate.mock.calls[1]?.[0])).not.toMatch(/tenant|issuer|resource/)
+      expect(navigate.mock.calls[0]?.[0]).toBe('/apps/edge-deployment-child/auth/login')
+      expect(String(navigate.mock.calls[0]?.[0])).not.toMatch(/tenant|issuer|resource/)
     } finally {
       vi.doUnmock('@stellar-enclosure/stellar-enclosure-web-shared')
       vi.unstubAllEnvs()

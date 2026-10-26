@@ -1,106 +1,36 @@
-import {
-    Rbac3ApiClient,
-    type Rbac3ErrorResponse,
-} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
-import {ApiError} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {Rbac3ApiClient} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {ApiError, createGatewayAuthClient, createHttpClient, type GatewayAuthClient} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import type {FeatureApiClient, FeatureApiRequest} from '../features/shared/FeatureApi'
+import {gatewayAuth, notifyAuthorizationFailure} from '../features/auth/gatewayAuth'
 
 export interface AdminApiClients {
+  readonly authClient: GatewayAuthClient
   readonly rbac3Client: Rbac3ApiClient
   readonly featureClient: FeatureApiClient
 }
 
-export const createAdminApiClients = (
-  basePath = '',
-  fetcher: typeof globalThis.fetch = globalThis.fetch.bind(globalThis),
-): AdminApiClients => {
-  const normalizedBasePath = basePath.replace(/\/$/, '')
-  const request = async <T,>(
-    path: string,
-    options: FeatureApiRequest = {},
-  ): Promise<T> => {
-    let response: Response
-      const headers = new Headers(options.headers)
-      headers.set('Accept', 'application/json')
-      if (options.body !== undefined && !headers.has('Content-Type')) {
-          headers.set('Content-Type', 'application/json')
-      }
-    try {
-      response = await fetcher(buildUrl(normalizedBasePath, path, options.query), {
-        method: options.method ?? 'GET',
-        credentials: 'include',
-          headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      })
-    } catch (cause) {
-      throw new ApiError(
-        cause instanceof Error ? cause.message : 'Tianquan-Jianshen network request failed',
-        0, 'NETWORK_ERROR', {retryable: true},
-      )
+export const createAdminApiClients = (basePath = '', fetcher: typeof globalThis.fetch = (...args) => globalThis.fetch(...args)): AdminApiClients => {
+  const authClient = createGatewayAuthClient({baseUrl: basePath, appAlias: import.meta.env.VITE_OAUTH_APP_ALIAS ?? 'edge-jianshen',
+    context: gatewayAuth.context, fetch: fetcher})
+  const transport = createHttpClient({baseUrl: authClient.applicationBaseUrl, credentials: 'include', context: authClient.context,
+    getCsrf: signal => authClient.csrf(signal), fetch: fetcher, onAuthError: notifyAuthorizationFailure})
+  const request = async <T,>(path: string, options: FeatureApiRequest = {}): Promise<T> => {
+    const parameters = new URLSearchParams()
+    Object.entries(options.query ?? {}).forEach(([key, value]) => {
+      if (value !== null && value !== undefined) parameters.set(key, String(value))
+    })
+    const suffix = parameters.size ? '?' + parameters.toString() : ''
+    const envelope = await transport.request<ResultRecord<T> | LegacyDataEnvelope<T>>(path + suffix, {
+      method: options.method ?? 'GET', headers: options.headers, signal: options.signal,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    })
+    if (envelope && typeof envelope === 'object' && 'data' in envelope && 'meta' in envelope && !('success' in envelope)) return envelope.data
+    if (!envelope || typeof envelope !== 'object' || !('success' in envelope) || envelope.success !== true || envelope.data === null) {
+      throw new ApiError('Tianquan-Jianshen response envelope is invalid', 200, 'INVALID_RESPONSE', {retryable: false})
     }
-    if (!response.ok) throw await responseError(response)
-    const envelope = await readJson<ResultRecord<T> | LegacyDataEnvelope<T>>(response)
-    if (isLegacyDataEnvelope(envelope)) return envelope.data
-    if (envelope === null || typeof envelope !== 'object' || !('data' in envelope) || envelope.success !== true) {
-      throw new ApiError(
-        envelope?.message ?? 'Tianquan-Jianshen response envelope is invalid',
-        response.status,
-        envelope?.status ?? (envelope?.code === 401 ? 'AUTHENTICATION_REQUIRED' : 'INVALID_RESPONSE'),
-        {retryable: false},
-      )
-    }
-    return envelope.data as T
+    return envelope.data
   }
-
-    return {
-        rbac3Client: new Rbac3ApiClient({basePath: normalizedBasePath, fetch: fetcher}),
-        featureClient: {request},
-    }
+  return {authClient, rbac3Client: new Rbac3ApiClient({transport}), featureClient: {request}}
 }
-
-interface ResultRecord<T> {
-  readonly success: boolean
-  readonly code: number
-  readonly message: string
-  readonly data: T | null
-  readonly status?: string
-  readonly traceId?: string | null
-}
-
-interface LegacyDataEnvelope<T> {
-  readonly data: T
-  readonly meta: Readonly<Record<string, unknown>>
-}
-
-const isLegacyDataEnvelope = <T,>(value: ResultRecord<T> | LegacyDataEnvelope<T> | null): value is LegacyDataEnvelope<T> =>
-  value !== null && typeof value === 'object' && 'data' in value && 'meta' in value && !('success' in value)
-
-const buildUrl = (
-    basePath: string,
-    path: string,
-    query?: FeatureApiRequest['query'],
-) => {
-  const parameters = new URLSearchParams()
-  Object.entries(query ?? {}).forEach(([key, value]) => {
-    if (value !== null && value !== undefined) parameters.set(key, String(value))
-  })
-  const suffix = parameters.size === 0 ? '' : `?${parameters.toString()}`
-  return `${basePath}${path}${suffix}`
-}
-
-const readJson = async <T,>(response: Response): Promise<T | null> => {
-  try { return await response.json() as T } catch { return null }
-}
-
-const responseError = async (response: Response): Promise<ApiError> => {
-  const body = await readJson<Rbac3ErrorResponse & Partial<ResultRecord<unknown>>>(response)
-  return new ApiError(
-    body?.error?.message ?? body?.message ?? 'Tianquan-Jianshen request was rejected',
-    response.status,
-    body?.error?.code ?? body?.status ?? 'INVALID_RESPONSE',
-    {
-      retryable: body?.error?.retryable ?? (response.status === 429 || response.status >= 500),
-      requestId: body?.meta?.traceId ?? body?.traceId ?? undefined,
-    },
-  )
-}
+interface ResultRecord<T> {readonly success: boolean; readonly code: number; readonly message: string; readonly data: T | null}
+interface LegacyDataEnvelope<T> {readonly data: T; readonly meta: Readonly<Record<string, unknown>>}

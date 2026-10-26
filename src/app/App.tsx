@@ -1,4 +1,5 @@
-import {Rbac3Provider} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {FieldCatalogProvider} from '../permissions/FieldCatalog'
+import {CurrentAuthorizationProvider} from '../features/auth/CurrentAuthorizationProvider'
 import {QueryClientProvider} from '@tanstack/react-query'
 import {BrowserRouter} from 'react-router-dom'
 import {AppErrorBoundary} from '@stellar-enclosure/stellar-enclosure-web-shared'
@@ -17,12 +18,13 @@ if (!configuredBase.startsWith('/') || configuredBase.startsWith('//')
 const basePath = configuredBase === '/' ? '/' : configuredBase.replace(/\/?$/, '/')
 
 const queryClient = createAdminQueryClient()
-const clients = createAdminApiClients(import.meta.env.VITE_TIANQUAN_JIANSHEN_API_BASE ?? '')
+const clients = createAdminApiClients(import.meta.env.VITE_YUHENG_ORIGIN ?? import.meta.env.VITE_TIANQUAN_JIANSHEN_API_BASE ?? '')
 
 export const App = ({ embedded = false }: { readonly embedded?: boolean }) => (
     <QueryClientProvider client={queryClient}>
-        <Rbac3Provider client={clients.rbac3Client}>
+        <CurrentAuthorizationProvider clients={clients}>
             <FeatureApiProvider client={clients.featureClient}>
+                <FieldCatalogProvider>
                 <BrowserRouter basename={basePath}>
                     <AppErrorBoundary onError={(error, info) => {
                         console.error('[Tianquan-Jianshen] Unhandled error:', error, info.componentStack)
@@ -32,7 +34,8 @@ export const App = ({ embedded = false }: { readonly embedded?: boolean }) => (
                         </AuthenticationShell>
                     </AppErrorBoundary>
                 </BrowserRouter>
+                </FieldCatalogProvider>
             </FeatureApiProvider>
-        </Rbac3Provider>
+        </CurrentAuthorizationProvider>
     </QueryClientProvider>
 )

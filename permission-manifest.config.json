@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "application": {
+    "businessCode": "xingyuan",
+    "applicationCode": "tianquan-jianshen"
+  },
+  "producerId": "tianquan-jianshen-web",
+  "ownedKeyPrefixes": [
+    "tianquan-jianshen.app.",
+    "tianquan-jianshen.menu.",
+    "tianquan-jianshen.page.",
+    "tianquan-jianshen.button.",
+    "tianquan-jianshen.component."
+  ],
+  "expectedModules": [
+    "console"
+  ],
+  "modules": {
+    "console": {
+      "entryPoints": [
+        "src/permissions/permissions.ts",
+        "src/permissions/resources.ts",
+        "src/permissions/fieldReferences.ts"
+      ]
+    }
+  },
+  "artifact": {
+    "repository": "tianquan-jianshen-web",
+    "commit": "763b54b20b8949392175c4e7c005fa437797c954",
+    "buildId": "local-source",
+    "version": "0.0.1"
+  },
+  "tsconfig": "tsconfig.json",
+  "toolchainLock": "permission-toolchain.lock.json"
+}

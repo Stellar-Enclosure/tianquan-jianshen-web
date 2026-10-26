@@ -1,4 +1,5 @@
-import {PermissionGuard, useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {ResourceGuard} from '../../permissions/ResourceGuard'
+import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Descriptions, Drawer, Popconfirm, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
@@ -57,7 +58,7 @@ export const ManagementPolicyPage = () => {
   return (
     <Card
       title="委托管理策略"
-      extra={<PermissionGuard permission="system:management-policy:manage"><Button type="primary" onClick={() => edit(null)}>新增完整策略</Button></PermissionGuard>}
+      extra={<ResourceGuard resourceKey="tianquan-jianshen.button.ManagementPolicyPage.manage1"><Button type="primary" onClick={() => edit(null)}>新增完整策略</Button></ResourceGuard>}
     >
       <Typography.Paragraph type="secondary">
         每次授权必须由同一条策略同时满足 Subject、Scope、激活根角色与 Operation；平台不会拼接多条策略的局部授权。
@@ -99,10 +100,10 @@ export const ManagementPolicyPage = () => {
               title: '操作', render: (_value, row) => (
                 <Space>
                   <Button size="small" onClick={() => setSelected(row)}>查看详情</Button>
-                  <PermissionGuard permission="system:management-policy:manage">
+                  <ResourceGuard resourceKey="tianquan-jianshen.button.ManagementPolicyPage.manage2">
                     <Button size="small" onClick={() => edit(row)}>编辑</Button>
                     {row.status === 'ACTIVE' && <Popconfirm title="确认禁用并保留历史？" onConfirm={() => disable.mutate(row)}><Button danger size="small">禁用</Button></Popconfirm>}
-                  </PermissionGuard>
+                  </ResourceGuard>
                 </Space>
               ),
             },

@@ -1,4 +1,6 @@
-import {type Rbac3Client, Rbac3Provider} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+vi.mock('../../permissions/FieldCatalog', () => ({useWritableFields: () => true, useWritableFieldKeys: () => true}))
+import {TestAuthorizationProvider, createAuthorizationFixtureClient} from '../../test/authorization'
+import {type Rbac3Client} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import type {PropsWithChildren} from 'react'
@@ -14,14 +16,7 @@ vi.mock('./ManagementPolicyEditor', () => ({
 }))
 
 const wrapper = ({ children }: PropsWithChildren) => {
-  const sdk = {
-    getAbout: async () => ({
-        user: {id: '7', tenantId: '9', identitySub: 'policy-test', status: 'ACTIVE'},
-      permissions: ['system:management-policy:read', 'system:management-policy:manage'],
-      fieldPolicies: {}, activeRoleContexts: [], apps: [], menus: [], routes: [], actions: [],
-        defaultApplicationCode: null, defaultRoute: null, authVersion: 1, policyVersion: 1,
-    }),
-  } as unknown as Rbac3Client
+  const sdk = createAuthorizationFixtureClient({subject:'policy-test',tenantId:'9',permissionCodes:['system:management-policy:read', 'system:management-policy:manage'],authVersion:1,policyVersion:1}, {}) as unknown as Rbac3Client
   const api: FeatureApiClient = { request: async <T,>() => [{
     policyId: '101', policyCode: 'ORG_ADMIN', name: '组织管理员', status: 'ACTIVE',
     validFrom: '2026-08-01T00:00:00Z', validTo: null,
@@ -31,9 +26,9 @@ const wrapper = ({ children }: PropsWithChildren) => {
   }] as T }
   return (
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <Rbac3Provider client={sdk}>
+        <TestAuthorizationProvider client={sdk}>
         <FeatureApiProvider client={api}>{children}</FeatureApiProvider>
-      </Rbac3Provider>
+      </TestAuthorizationProvider>
     </QueryClientProvider>
   )
 }
@@ -54,15 +49,10 @@ describe('management policy page', () => {
       if (path.endsWith('/management-policies')) return [policy] as T
       return [] as T
     }}
-    const sdk = {getAbout: async () => ({
-      user: {id: '7', tenantId: '9', identitySub: 'policy-test', status: 'ACTIVE'},
-      permissions: ['system:management-policy:read', 'system:management-policy:manage'],
-      fieldPolicies: {}, activeRoleContexts: [], apps: [], menus: [], routes: [], actions: [],
-      defaultApplicationCode: null, defaultRoute: null, authVersion: 1, policyVersion: 1,
-    })} as unknown as Rbac3Client
-    render(<QueryClientProvider client={client}><Rbac3Provider client={sdk}>
+    const sdk = createAuthorizationFixtureClient({subject:'policy-test',tenantId:'9',permissionCodes:['system:management-policy:read', 'system:management-policy:manage'],authVersion:1,policyVersion:1}, {}) as unknown as Rbac3Client
+    render(<QueryClientProvider client={client}><TestAuthorizationProvider client={sdk}>
       <FeatureApiProvider client={api}><ManagementPolicyPage /></FeatureApiProvider>
-    </Rbac3Provider></QueryClientProvider>)
+    </TestAuthorizationProvider></QueryClientProvider>)
     await screen.findByText('可用策略 0')
     if (operation === 'save') {
       fireEvent.click(screen.getByRole('button', {name: '新增完整策略'}))

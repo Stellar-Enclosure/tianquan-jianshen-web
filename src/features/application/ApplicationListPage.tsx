@@ -1,4 +1,6 @@
-import {PermissionGuard, useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {useWritableFields} from '../../permissions/FieldCatalog'
+import {ResourceGuard} from '../../permissions/ResourceGuard'
+import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Descriptions, Drawer, Form, Input, InputNumber, Popconfirm, Space, Table, Tag} from 'antd'
 import {useState} from 'react'
@@ -30,6 +32,8 @@ export const ApplicationListPage = () => {
       queryClient.invalidateQueries({queryKey: ['tianquan-jianshen', 'tenant-application']}),
     ])
   }
+  const admitWritable = useWritableFields('AdmitApplicationAuthorizationScopeCommand')
+  const statusWritable = useWritableFields('ChangeApplicationAuthorizationScopeStatusCommand')
   const admit = useMutation({
     mutationFn: (values: {ddcApplicationId: string; displayPriority: number}) => api.admitTenantApplication(values.ddcApplicationId.trim(), values.displayPriority),
     onSuccess: refresh,
@@ -53,8 +57,8 @@ export const ApplicationListPage = () => {
 
   return (
     <Card title="租户应用授权">
-      <PermissionGuard permission="system:application:manage">
-        <Form layout="inline" onFinish={(values) => admit.mutate(values)} style={{marginBottom: 16}}>
+      <ResourceGuard resourceKey="tianquan-jianshen.button.ApplicationListPage.manage1">
+        <Form disabled={!admitWritable} layout="inline" onFinish={(values) => admitWritable && admit.mutate(values)} style={{marginBottom: 16}}>
           <Form.Item name="ddcApplicationId" rules={[{required: true, whitespace: true}]}>
             <Input placeholder="Tianshu Application ID" />
           </Form.Item>
@@ -63,7 +67,7 @@ export const ApplicationListPage = () => {
           </Form.Item>
           <Button type="primary" htmlType="submit" loading={admit.isPending}>纳入租户授权</Button>
         </Form>
-      </PermissionGuard>
+      </ResourceGuard>
       {mutationError && (
         <Alert
           type="error"
@@ -91,14 +95,14 @@ export const ApplicationListPage = () => {
               render: (_value: unknown, application: TenantApplicationView) => (
                 <Space>
                   <Button size="small" onClick={() => setSelectedApplication(application)}>查看详情</Button>
-                  <PermissionGuard permission="system:application:manage">
-                    <Button size="small" loading={changeStatus.isPending} onClick={() => changeStatus.mutate(application)}>
+                  <ResourceGuard resourceKey="tianquan-jianshen.button.ApplicationListPage.manage2">
+                    <Button size="small" disabled={!statusWritable} loading={changeStatus.isPending} onClick={() => changeStatus.mutate(application)}>
                       {application.status === 'ACTIVE' ? '暂停' : '启用'}
                     </Button>
                     <Popconfirm title="确认移除租户应用授权？" okText="确认移除" cancelText="取消" onConfirm={() => remove.mutate(application)}>
                       <Button size="small" danger loading={remove.isPending}>移除</Button>
                     </Popconfirm>
-                  </PermissionGuard>
+                  </ResourceGuard>
                 </Space>
               ),
             },

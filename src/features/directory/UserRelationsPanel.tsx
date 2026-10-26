@@ -1,4 +1,6 @@
-import {PermissionGuard, useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {useWritableFields} from '../../permissions/FieldCatalog'
+import {ResourceGuard} from '../../permissions/ResourceGuard'
+import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Checkbox, Form, Input, Popconfirm, Space, Table, Tabs, Tag, Typography} from 'antd'
 import type {ReactNode} from 'react'
@@ -53,6 +55,8 @@ export const UserRelationsPanel = ({userId, authVersion}: UserRelationsPanelProp
     queryFn: () => api.positionAssignments(normalizedUserId),
     enabled: status === 'READY' && normalizedUserId.length > 0,
   })
+  const orgWritable = useWritableFields('UserOrganizationAssignmentService$AssignCommand')
+  const positionWritable = useWritableFields('UserPositionAssignmentService$AssignCommand')
   const assignOrganization = useMutation({
     mutationFn: (values: OrganizationFormValues) => {
       const command: OrganizationAssignmentCommand = {
@@ -126,7 +130,8 @@ export const UserRelationsPanel = ({userId, authVersion}: UserRelationsPanelProp
                   <Form
                     form={organizationForm}
                     layout="vertical"
-                    onFinish={(values) => assignOrganization.mutate(values)}
+                    disabled={!orgWritable}
+                    onFinish={(values) => orgWritable && assignOrganization.mutate(values)}
                     initialValues={{validTo: ''}}
                   >
                     <Space wrap align="start">
@@ -146,11 +151,11 @@ export const UserRelationsPanel = ({userId, authVersion}: UserRelationsPanelProp
                         <Input />
                       </Form.Item>
                     </Space>
-                    <PermissionGuard permission="system:user-organization:manage">
+                    <ResourceGuard resourceKey="tianquan-jianshen.button.UserRelationsPanel.manage1.system.user-organization.manage">
                       <Button type="primary" htmlType="submit" loading={assignOrganization.isPending}>
                         保存组织关系
                       </Button>
-                    </PermissionGuard>
+                    </ResourceGuard>
                   </Form>
                 )}
                 query={organizations}
@@ -192,7 +197,8 @@ export const UserRelationsPanel = ({userId, authVersion}: UserRelationsPanelProp
                   <Form
                     form={positionForm}
                     layout="vertical"
-                    onFinish={(values) => assignPosition.mutate(values)}
+                    disabled={!positionWritable}
+                    onFinish={(values) => positionWritable && assignPosition.mutate(values)}
                     initialValues={{primaryAssignment: false, validTo: ''}}
                   >
                     <Space wrap align="start">
@@ -218,11 +224,11 @@ export const UserRelationsPanel = ({userId, authVersion}: UserRelationsPanelProp
                         <Checkbox>设为主岗位</Checkbox>
                       </Form.Item>
                     </Space>
-                    <PermissionGuard permission="system:user-position:manage">
+                    <ResourceGuard resourceKey="tianquan-jianshen.button.UserRelationsPanel.manage1.system.user-position.manage">
                       <Button type="primary" htmlType="submit" loading={assignPosition.isPending}>
                         保存岗位关系
                       </Button>
-                    </PermissionGuard>
+                    </ResourceGuard>
                   </Form>
                 )}
                 query={positions}
@@ -260,8 +266,7 @@ export const UserRelationsPanel = ({userId, authVersion}: UserRelationsPanelProp
             key: 'roles',
             label: '角色任职',
             children: (
-              <PermissionGuard
-                permission="system:role-assignment:read"
+              <ResourceGuard resourceKey="tianquan-jianshen.button.UserRelationsPanel.read1"
                 fallback={<Alert type="warning" showIcon title="当前账号没有角色任职读取权限" />}
               >
                 <Space orientation="vertical" size="middle">
@@ -272,7 +277,7 @@ export const UserRelationsPanel = ({userId, authVersion}: UserRelationsPanelProp
                     <Button type="primary">打开角色任职工作台</Button>
                   </Link>
                 </Space>
-              </PermissionGuard>
+              </ResourceGuard>
             ),
           },
         ]}
@@ -329,11 +334,11 @@ const OrganizationRevokeAction = ({assignment, loading, onRevoke}: OrganizationR
     return <Tag>只读</Tag>
   }
   return (
-    <PermissionGuard permission="system:user-organization:manage">
+    <ResourceGuard resourceKey="tianquan-jianshen.button.UserRelationsPanel.manage2.system.user-organization.manage">
       <Popconfirm title="确认撤销组织关系？" okText="确认撤销组织关系" cancelText="取消" onConfirm={onRevoke}>
         <Button size="small" danger loading={loading}>撤销组织关系</Button>
       </Popconfirm>
-    </PermissionGuard>
+    </ResourceGuard>
   )
 }
 
@@ -348,10 +353,10 @@ const PositionRevokeAction = ({assignment, loading, onRevoke}: PositionRevokeAct
     return <Tag>只读</Tag>
   }
   return (
-    <PermissionGuard permission="system:user-position:manage">
+    <ResourceGuard resourceKey="tianquan-jianshen.button.UserRelationsPanel.manage2.system.user-position.manage">
       <Popconfirm title="确认撤销岗位关系？" okText="确认撤销岗位关系" cancelText="取消" onConfirm={onRevoke}>
         <Button size="small" danger loading={loading}>撤销岗位关系</Button>
       </Popconfirm>
-    </PermissionGuard>
+    </ResourceGuard>
   )
 }

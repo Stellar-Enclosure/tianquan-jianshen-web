@@ -1,76 +1,25 @@
-import {
-  FrontendResourceRegistry,
-  resolveDefaultRoute,
-  type FrontendNavigationNode,
-  type FrontendResourceDefinition,
-  type Rbac3AboutView,
-} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
-import resourceDefinitions from './resourceDefinitions.json'
-import { authorizationRouteDescriptors } from '../features/authorization.routes'
-import { governanceRouteDescriptors } from '../features/governance.routes'
-import { runtimeRouteDescriptors } from '../features/runtime.routes'
-import type { FeatureRouteDescriptor } from '../features/shared/RouteDescriptor'
-import type { EnterpriseNavigationItem } from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {FrontendResourceRegistry, type FrontendNavigationNode} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import type {PermissionSnapshot, PermissionSnapshotBinding} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
+import type {EnterpriseNavigationItem} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {resources, resourceReferences} from '../permissions/resources'
+import {authorizationRouteDescriptors} from '../features/authorization.routes'
+import {governanceRouteDescriptors} from '../features/governance.routes'
+import {runtimeRouteDescriptors} from '../features/runtime.routes'
+import type {FeatureRouteDescriptor} from '../features/shared/RouteDescriptor'
 
-export const localResourceRegistry = new FrontendResourceRegistry(
-  resourceDefinitions as readonly FrontendResourceDefinition[],
-)
-
-const componentDescriptors: readonly FeatureRouteDescriptor[] = [
-  ...governanceRouteDescriptors,
-  ...authorizationRouteDescriptors,
-  ...runtimeRouteDescriptors,
-].sort((left, right) => left.navigationOrder - right.navigationOrder || left.key.localeCompare(right.key))
-
-const componentByKey = new Map(componentDescriptors.map((descriptor) => [descriptor.componentKey, descriptor]))
-
-export const applicationRouteDescriptors: readonly FeatureRouteDescriptor[] = localResourceRegistry.definitions
-  .filter((definition) => definition.kind === 'ROUTE' && definition.componentKey)
-  .map((definition): FeatureRouteDescriptor | null => {
-    const component = componentByKey.get(definition.componentKey!)
-    if (!component && definition.hidden === true) return null
-    if (!component) throw new Error(`missing local component binding for route ${definition.code}`)
-    return {
-      ...component,
-      key: definition.code,
-      path: definition.path!,
-      title: definition.name,
-      permission: component.permission,
-      navigationOrder: definition.order ?? component.navigationOrder,
-      hideFromNav: definition.hidden,
-    }
-  })
-  .filter((route): route is FeatureRouteDescriptor => route !== null)
-
-const definitionForRoute = (route: FeatureRouteDescriptor) => localResourceRegistry.definitions.find(
-  (definition) => definition.kind === 'ROUTE' && definition.componentKey === route.componentKey,
-)
-
-export const isRouteAllowed = (about: Rbac3AboutView, route: FeatureRouteDescriptor) => {
-  const definition = definitionForRoute(route)
-  return definition !== undefined && localResourceRegistry.canAccessRoute(definition.code, about)
-}
-
-export const visibleNavigation = (about: Rbac3AboutView) => localResourceRegistry
-  .navigation(about)
-  .map(toNavigationItem)
-  .filter((item): item is EnterpriseNavigationItem => item !== null)
-
-export const resolveApplicationLanding = (about: Rbac3AboutView): string | null => {
-  const definition = resolveDefaultRoute(about, localResourceRegistry)
-  if (definition?.path) return definition.path
-  return applicationRouteDescriptors.find((route) => isRouteAllowed(about, route))?.path ?? null
-}
-
+export const localResourceRegistry = new FrontendResourceRegistry(resources, resourceReferences)
+export const applicationRouteDescriptors: readonly FeatureRouteDescriptor[] = [...governanceRouteDescriptors,
+  ...authorizationRouteDescriptors, ...runtimeRouteDescriptors].sort((left, right) => left.navigationOrder - right.navigationOrder || left.key.localeCompare(right.key))
+export const isRouteAllowed = (snapshot: PermissionSnapshot | null, binding: PermissionSnapshotBinding | null, route: FeatureRouteDescriptor) =>
+  localResourceRegistry.canAccessRoute(route.resourceKey, snapshot, binding)
+export const visibleNavigation = (snapshot: PermissionSnapshot | null, binding: PermissionSnapshotBinding | null) =>
+  localResourceRegistry.navigation(snapshot, binding).map(toNavigationItem).filter((item): item is EnterpriseNavigationItem => item !== null)
+export const resolveApplicationLanding = (snapshot: PermissionSnapshot | null, binding: PermissionSnapshotBinding | null): string | null =>
+  applicationRouteDescriptors.find(route => !route.hideFromNav && isRouteAllowed(snapshot, binding, route))?.path ?? null
 const toNavigationItem = (node: FrontendNavigationNode): EnterpriseNavigationItem | null => {
-  if (node.kind === 'ROUTE' && node.hidden === true) return null
-  const children = node.children
-    .map(toNavigationItem)
-    .filter((item): item is EnterpriseNavigationItem => item !== null)
-  return {
-  key: node.code,
-  label: node.name,
-  path: node.path,
-    children: children.length > 0 ? children : undefined,
-  }
+  if (node.target.hidden === 'true') return null
+  const children = node.children.map(toNavigationItem).filter((value): value is EnterpriseNavigationItem => value !== null)
+  if (node.type === 'MENU' && children.length === 0 && !node.target.route) return null
+  return {key: node.key, label: typeof node.target.label === 'string' ? node.target.label : node.key,
+    path: typeof node.target.route === 'string' ? node.target.route : undefined, children: children.length ? children : undefined}
 }

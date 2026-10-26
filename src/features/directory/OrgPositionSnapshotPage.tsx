@@ -1,4 +1,5 @@
-import { PermissionGuard } from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {useWritableFields} from '../../permissions/FieldCatalog'
+import {ResourceGuard} from '../../permissions/ResourceGuard'
 import { useMutation } from '@tanstack/react-query'
 import { Alert, Button, Card, Form, Input, InputNumber, Space, Typography } from 'antd'
 import { useState } from 'react'
@@ -13,6 +14,7 @@ interface SnapshotForm {
 }
 
 export const OrgPositionSnapshotPage = () => {
+  const fieldsWritable = useWritableFields('DirectorySnapshotCommandDTO')
   const api = directoryApi(useFeatureApi())
   const [result, setResult] = useState<string | null>(null)
   const mutation = useMutation({
@@ -29,10 +31,10 @@ export const OrgPositionSnapshotPage = () => {
         每次同步创建不可变快照版本；平台只激活完整且校验通过的新版本，不在原版本上修改事实。
       </Typography.Paragraph>
       {result && <Alert type="success" message={result} showIcon />}
-      <Form<SnapshotForm>
+      <Form<SnapshotForm> disabled={!fieldsWritable}
         layout="vertical"
         initialValues={{ providerCode: 'directory-provider', snapshotVersion: 1, payloadJson: '{\n  "organizations": [],\n  "positions": [],\n  "users": []\n}' }}
-        onFinish={(values) => mutation.mutate(values)}
+        onFinish={(values) => fieldsWritable && mutation.mutate(values)}
       >
         <Form.Item label="Provider Code" name="providerCode" rules={[{ required: true }]}>
           <Input />
@@ -63,9 +65,9 @@ export const OrgPositionSnapshotPage = () => {
         </Form.Item>
         {mutation.error && <Alert type="error" message="快照提交失败" description={String(mutation.error)} showIcon />}
         <Space>
-          <PermissionGuard permission="system:directory:sync">
+          <ResourceGuard resourceKey="tianquan-jianshen.button.OrgPositionSnapshotPage.sync1">
             <Button type="primary" htmlType="submit" loading={mutation.isPending}>提交并激活快照</Button>
-          </PermissionGuard>
+          </ResourceGuard>
         </Space>
       </Form>
     </Card>

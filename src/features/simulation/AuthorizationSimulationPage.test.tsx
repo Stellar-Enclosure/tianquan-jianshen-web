@@ -1,22 +1,15 @@
-import {type Rbac3Client, Rbac3Provider} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+vi.mock('../../permissions/FieldCatalog', () => ({useWritableFields: () => true, useWritableFieldKeys: () => true}))
+import {TestAuthorizationProvider, createAuthorizationFixtureClient} from '../../test/authorization'
+import {type Rbac3Client} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import type {PropsWithChildren} from 'react'
-import {describe, expect, it} from 'vitest'
+import {describe, expect, it, vi} from 'vitest'
 import {type FeatureApiClient, FeatureApiProvider} from '../shared/FeatureApi'
 import {AuthorizationSimulationPage} from './AuthorizationSimulationPage'
 
 const wrapper = ({ children }: PropsWithChildren) => {
-  const sdk = {
-        getAbout: async () => ({
-        user: {id: '7', tenantId: '9', identitySub: 'simulation-test', status: 'ACTIVE'},
-        authVersion: 2,
-        policyVersion: 4,
-      permissions: ['system:authorization-simulation:execute'], fieldPolicies: {}, activeRoleContexts: [], apps: [], menus: [], routes: [], actions: [],
-        defaultApplicationCode: null,
-        defaultRoute: null,
-    }),
-  } as unknown as Rbac3Client
+  const sdk = createAuthorizationFixtureClient({subject:'simulation-test',tenantId:'9',permissionCodes:['system:authorization-simulation:execute'],authVersion:2,policyVersion:4}, {}) as unknown as Rbac3Client
   const api: FeatureApiClient = { request: async <T,>(path: string) => (path.includes('role-change-impact') ? {
     impact: { roleId: '1001', activationRoots: ['root-1'], roleFamily: ['BUSINESS'], effectiveFamilyRisk: 'LOW', permissionCount: 3, conflicts: [] },
     policyVersion: 4, evidenceChecksum: 'impact-checksum', expiresAt: '2026-08-01T01:00:00Z',
@@ -25,8 +18,8 @@ const wrapper = ({ children }: PropsWithChildren) => {
     hypothetical: { functionDecision: { decision: 'ALLOW', reasonCode: 'PERMISSION_GRANTED', evidenceIds: ['2'] } },
           authVersion: 2, policyVersion: 4, snapshotChecksum: 'safe-checksum', expiresAt: '2026-08-01T01:00:00Z',
   }) as T }
-    return <QueryClientProvider client={new QueryClient()}><Rbac3Provider client={sdk}><FeatureApiProvider
-        client={api}>{children}</FeatureApiProvider></Rbac3Provider></QueryClientProvider>
+    return <QueryClientProvider client={new QueryClient()}><TestAuthorizationProvider client={sdk}><FeatureApiProvider
+        client={api}>{children}</FeatureApiProvider></TestAuthorizationProvider></QueryClientProvider>
 }
 
 describe('authorization simulation', () => {

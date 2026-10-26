@@ -1,8 +1,10 @@
+import {useWritableFields} from '../../permissions/FieldCatalog'
+import {ResourceGuard} from '../../permissions/ResourceGuard'
 import {useMutation, useQueries, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Descriptions, Drawer, Form, Input, InputNumber, Modal, Select, Space, Tag, Typography} from 'antd'
 import {useState} from 'react'
 import {Link} from 'react-router-dom'
-import {PermissionGuard, useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {roleApi, type RoleImpactView, type RoleView} from './role.api'
@@ -90,6 +92,8 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
     ])
   }
 
+  const fieldsWritable = useWritableFields(editingRole ? 'UpdateRoleRequestDTO' : 'CreateRoleRequestDTO')
+  const inheritanceWritable = useWritableFields('InheritanceRequestDTO')
   const saveRole = useMutation({
     mutationFn: (values: RoleFormValues) => editingRole
       ? api.update(editingRole.roleId, {
@@ -187,7 +191,7 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
 
   const submitRole = async () => {
     try {
-      saveRole.mutate(await roleForm.validateFields())
+      if (fieldsWritable) saveRole.mutate(await roleForm.validateFields())
     } catch {
       return
     }
@@ -195,7 +199,7 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
 
   const submitInheritance = async () => {
     try {
-      addInheritance.mutate(await inheritanceForm.validateFields())
+      if (inheritanceWritable) addInheritance.mutate(await inheritanceForm.validateFields())
     } catch {
       return
     }
@@ -203,7 +207,7 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
 
   const submitRemoveInheritance = async () => {
     try {
-      removeInheritance.mutate(await inheritanceForm.validateFields())
+      if (inheritanceWritable) removeInheritance.mutate(await inheritanceForm.validateFields())
     } catch {
       return
     }
@@ -213,9 +217,9 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
     <Card
       title="角色图谱"
       extra={(
-        <PermissionGuard permission="system:role:create">
+        <ResourceGuard resourceKey="tianquan-jianshen.button.RoleGraphPage.create1">
           <Button type="primary" onClick={openCreate}>新建角色</Button>
-        </PermissionGuard>
+        </ResourceGuard>
       )}
     >
       <Typography.Paragraph type="secondary">
@@ -264,17 +268,17 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
                 </Space>
                 <Space wrap>
                   <Button size="small" onClick={() => setImpactRole(role)}>影响分析</Button>
-                  <PermissionGuard permission="system:role:update">
+                  <ResourceGuard resourceKey="tianquan-jianshen.button.RoleGraphPage.update1">
                     <Button size="small" onClick={() => openEdit(role)}>编辑</Button>
-                  </PermissionGuard>
-                  <PermissionGuard permission="system:role-inheritance:manage">
+                  </ResourceGuard>
+                  <ResourceGuard resourceKey="tianquan-jianshen.button.RoleGraphPage.manage1">
                     <Button size="small" onClick={() => openInheritance(role)}>继承管理</Button>
-                  </PermissionGuard>
-                  <PermissionGuard permission="system:role-resource:read">
-                    <Link to={`/iam/roles/${encodeURIComponent(role.roleId)}/resources`}>
-                      <Button size="small">资源授权</Button>
+                  </ResourceGuard>
+                  <ResourceGuard resourceKey="tianquan-jianshen.button.RoleGraphPage.read1">
+                    <Link to={`/iam/roles/${encodeURIComponent(role.roleId)}/permissions`}>
+                      <Button size="small">权限字符授权</Button>
                     </Link>
-                  </PermissionGuard>
+                  </ResourceGuard>
                 </Space>
               </Space>
             </Card>
@@ -283,7 +287,7 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
       </PageState>
 
       <Modal
-        open={roleModalOpen}
+        open={roleModalOpen} okButtonProps={{disabled: !fieldsWritable}}
         title={editingRole ? '编辑角色' : '新建角色'}
         onCancel={() => { setRoleModalOpen(false); setEditingRole(null) }}
         onOk={() => { void submitRole() }}
@@ -291,7 +295,7 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
         confirmLoading={saveRole.isPending}
         destroyOnHidden
       >
-        <Form form={roleForm} layout="vertical">
+        <Form disabled={!fieldsWritable} form={roleForm} layout="vertical">
           {!editingRole && (
             <>
               <Form.Item name="applicationId" label="应用 ID" rules={[{required: true}]}>
@@ -332,7 +336,7 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
       </Modal>
 
       <Modal
-        open={inheritanceRole !== null}
+        open={inheritanceRole !== null} okButtonProps={{disabled: !inheritanceWritable}}
         title={inheritanceRole ? `继承管理：${inheritanceRole.roleName}` : ''}
         onCancel={() => setInheritanceRole(null)}
         onOk={() => { void submitInheritance() }}
@@ -341,7 +345,7 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
         destroyOnHidden
         footer={(_, {OkBtn, CancelBtn}) => (
           <Space>
-            <Button danger loading={removeInheritance.isPending} onClick={() => { void submitRemoveInheritance() }}>
+            <Button danger disabled={!inheritanceWritable} loading={removeInheritance.isPending} onClick={() => { void submitRemoveInheritance() }}>
               删除继承
             </Button>
             <CancelBtn />
@@ -349,7 +353,7 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
           </Space>
         )}
       >
-        <Form form={inheritanceForm} layout="vertical">
+        <Form disabled={!inheritanceWritable} form={inheritanceForm} layout="vertical">
           <Form.Item name="applicationId" label="应用 ID" rules={[{required: true}]}>
             <Input />
           </Form.Item>

@@ -2,85 +2,27 @@ import {access, readdir, readFile} from 'node:fs/promises'
 import {dirname, extname, join, resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
 
-const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const sourceRoot = join(packageRoot, 'src')
-const distRoot = join(packageRoot, 'dist')
-const platformsRoot = resolve(packageRoot, '../..')
-const forbiddenSource = [
-  'ManifestDetailPage',
-  'ResourceManifest',
-  '/auth/bootstrap',
-  'reportFrontendResources',
-  'system:resource:report',
-  'RolePermission',
-  'PermissionResource',
-  'permissionIds',
-  '/iam/roles/:roleId/permissions',
-  'iam.resource.report',
-]
-const forbiddenDist = [
-  'report-rbac-resources.mjs',
-  'tianquan-jianshen:resource-catalog:report',
-  'TIANQUAN_JIANSHEN_SERVICE_ACCESS_TOKEN',
-  'SERVICE_ACCESS_TOKEN',
-  'RolePermission',
-  'PermissionResource',
-  '/iam/roles/:roleId/permissions',
-]
-
-const files = async (directory) => {
-  const entries = await readdir(directory, {withFileTypes: true})
-  const result = []
-  for (const entry of entries) {
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+for (const old of ['src/app/resourceDefinitions.json', 'scripts/report-rbac-resources.mjs', 'src/features/role/RoleResourceGrantPage.tsx']) {
+  try {await access(join(root, old))} catch (error) {if (error.code === 'ENOENT') continue; throw error}
+  throw new Error('Removed manual registration/grant source is still present: ' + old)
+}
+const forbidden = ['reportFrontendResources', '/permission-mapping', 'createPermission(', 'createFieldRule(', 'updateFieldRule(', '/iam/roles/:roleId/resources']
+const inspect = async directory => {
+  for (const entry of await readdir(directory, {withFileTypes: true})) {
     const path = join(directory, entry.name)
-    if (entry.isDirectory()) result.push(...await files(path))
-    else if (['.ts', '.tsx', '.json', '.js', '.mjs'].includes(extname(entry.name))
-      && !/\.test\.(?:ts|tsx|js|mjs)$/.test(entry.name)) result.push(path)
-  }
-  return result
-}
-
-const assertSharedVersion = async () => {
-  const consumerRoots = [
-    packageRoot,
-    join(platformsRoot, 'stellar-enclosure-tianshu/stellar-enclosure-tianshu-admin-web'),
-    join(platformsRoot, 'stellar-enclosure-tianquan-shoubing/stellar-enclosure-tianquan-shoubing-admin-web'),
-    join(platformsRoot, 'stellar-enclosure-yuheng/stellar-enclosure-yuheng-admin-web'),
-  ]
-  for (const root of consumerRoots) {
-    const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-    if (manifest.dependencies?.['@stellar-enclosure/stellar-enclosure-web-shared'] !== '^0.2.0') {
-      throw new Error(`shared dependency is not ^0.2.0 (${root})`)
-    }
-    const lockPath = root === packageRoot
-      ? join(platformsRoot, 'stellar-enclosure-tianquan-jianshen/package-lock.json')
-      : join(root, 'package-lock.json')
-    const lockText = await readFile(lockPath, 'utf8')
-    const lock = JSON.parse(lockText)
-    const entry = lock.packages?.['node_modules/@stellar-enclosure/stellar-enclosure-web-shared']
-    if (!/^0\.2\.\d+$/.test(entry?.version ?? '')
-      || entry.resolved?.includes('0.1.4')
-      || entry.resolved?.startsWith('file:')
-      || entry.resolved?.startsWith('link:')) {
-      throw new Error(`shared lock does not resolve a published 0.2.x version (${lockPath})`)
+    if (entry.isDirectory()) await inspect(path)
+    else if (['.ts', '.tsx', '.json'].includes(extname(entry.name)) && !entry.name.includes('.test.')) {
+      const content = await readFile(path, 'utf8')
+      const violation = forbidden.find(value => content.includes(value))
+      if (violation) throw new Error('Removed authorization path remains: ' + violation + ' (' + path + ')')
     }
   }
 }
-
-await access(join(sourceRoot, 'app/resourceDefinitions.json'))
-await access(join(packageRoot, 'scripts/report-rbac-resources.mjs'))
-for (const file of await files(sourceRoot)) {
-  const source = await readFile(file, 'utf8')
-  const violation = forbiddenSource.find((value) => source.includes(value))
-  if (violation) throw new Error(`forbidden Tianquan-Jianshen web source symbol: ${violation} (${file})`)
-  if (source.includes("from 'scripts/") || source.includes('from "scripts/')) {
-    throw new Error(`browser source imports CI scripts (${file})`)
-  }
-}
-for (const file of await files(distRoot)) {
-  const source = await readFile(file, 'utf8')
-  const violation = forbiddenDist.find((value) => source.includes(value))
-  if (violation) throw new Error(`forbidden Tianquan-Jianshen web bundle material: ${violation} (${file})`)
-}
-await assertSharedVersion()
-process.stdout.write('tianquan-jianshen conformance guard passed\n')
+await inspect(join(root, 'src'))
+const manifest = JSON.parse(await readFile(join(root, '.generated/permissions/manifest-v1.json'), 'utf8'))
+const record = JSON.parse(await readFile(join(root, '.generated/permissions/artifact-record.json'), 'utf8'))
+const embedded = JSON.parse(await readFile(join(root, 'dist/permission-build.json'), 'utf8'))
+if (record.status !== 'BUILT' || manifest.producer.snapshotMode !== 'FULL' || manifest.artifact.buildId !== embedded.artifact.buildId
+  || record.buildEvidenceDigest !== embedded.buildEvidenceDigest || record.manifestDigest !== embedded.manifestDigest) throw new Error('Current permission build evidence is missing or inconsistent')
+process.stdout.write('Permission declarations and current embedded build evidence passed\n')

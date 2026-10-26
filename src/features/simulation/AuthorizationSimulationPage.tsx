@@ -1,4 +1,6 @@
-import {PermissionGuard, useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {useWritableFields} from '../../permissions/FieldCatalog'
+import {ResourceGuard} from '../../permissions/ResourceGuard'
+import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useMutation} from '@tanstack/react-query'
 import {Alert, Button, Card, Col, Descriptions, Form, Input, Row, Space, Tag, Typography} from 'antd'
 import {useFeatureApi} from '../shared/FeatureApi'
@@ -21,6 +23,8 @@ const permissionList = (value?: string) => value?.split(',').map((item) => item.
 
 export const AuthorizationSimulationPage = () => {
     const {about} = useRbac3Authorization()
+  const fieldsWritable = useWritableFields('AuthorizationSimulationRequestDTO', 'DecisionRequestDTO', 'AuthorizationDecisionResourceVO', 'AuthorizationDecisionSubjectVO', 'TokenVersionsVO', 'HypothesisDTO')
+  const impactWritable = useWritableFields('AuthorizationRoleChangeImpactRequestDTO')
   const api = simulationApi(useFeatureApi())
   const simulation = useMutation({
     mutationFn: (form: SimulationForm) => {
@@ -49,7 +53,7 @@ export const AuthorizationSimulationPage = () => {
   return (
     <Card title="授权模拟">
         <Alert type="info" showIcon title="模拟固定在一个一致快照上，仅返回判断和证据，不修改角色、权限或业务数据。"/>
-      <Form<SimulationForm> layout="vertical" onFinish={simulation.mutate} style={{ marginTop: 16 }}>
+      <Form<SimulationForm> disabled={!fieldsWritable} layout="vertical" onFinish={values => fieldsWritable && simulation.mutate(values)} style={{ marginTop: 16 }}>
         <Row gutter={16}>
           <Col span={8}><Form.Item name="permissionCode" label="Permission Code" rules={[{ required: true }]}><Input aria-label="Permission Code" /></Form.Item></Col>
           <Col span={8}><Form.Item name="applicationCode" label="Application Code" rules={[{ required: true }]}><Input aria-label="Application Code" /></Form.Item></Col>
@@ -57,9 +61,9 @@ export const AuthorizationSimulationPage = () => {
         </Row>
         <Form.Item name="addedPermissions" label="假设新增权限（逗号分隔）"><Input /></Form.Item>
         <Form.Item name="removedPermissions" label="假设移除权限（逗号分隔）"><Input /></Form.Item>
-        <PermissionGuard permission="system:authorization-simulation:execute">
+        <ResourceGuard resourceKey="tianquan-jianshen.button.AuthorizationSimulationPage.execute1">
           <Button type="primary" htmlType="submit" loading={simulation.isPending}>执行无副作用模拟</Button>
-        </PermissionGuard>
+        </ResourceGuard>
       </Form>
       <PageState loading={false} error={simulation.error} empty={!simulation.data} emptyDescription="填写条件后执行模拟">
         {simulation.data && (
@@ -81,14 +85,14 @@ export const AuthorizationSimulationPage = () => {
         <Typography.Paragraph type="secondary">
           输入角色 ID，查询该角色当前激活根、角色族风险、权限数量和冲突证据；结果只读且带策略版本与过期时间。
         </Typography.Paragraph>
-        <Form<RoleImpactForm> layout="inline" onFinish={roleImpact.mutate}>
+        <Form<RoleImpactForm> disabled={!impactWritable} layout="inline" onFinish={values => impactWritable && roleImpact.mutate(values)}>
           <Form.Item name="roleId" label="Role ID" rules={[{ required: true, whitespace: true }]}>
             <Input aria-label="Role ID" placeholder="例如 1001" />
           </Form.Item>
           <Form.Item>
-            <PermissionGuard permission="system:authorization-simulation:execute">
+            <ResourceGuard resourceKey="tianquan-jianshen.button.AuthorizationSimulationPage.execute2">
               <Button type="primary" htmlType="submit" loading={roleImpact.isPending}>查询角色变更影响</Button>
-            </PermissionGuard>
+            </ResourceGuard>
           </Form.Item>
         </Form>
         <PageState loading={false} error={roleImpact.error} empty={!roleImpact.data} emptyDescription="输入 Role ID 后查询">

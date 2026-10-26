@@ -8,9 +8,9 @@ import {applicationRouteDescriptors, isRouteAllowed, resolveApplicationLanding, 
 import type {FeatureRouteDescriptor} from '../features/shared/RouteDescriptor'
 
 export const ApplicationRouter = ({ embedded = false }: { readonly embedded?: boolean }) => {
-    const {about} = useRbac3Authorization()
+    const {about, snapshot, binding} = useRbac3Authorization()
   if (!about) return null
-  const landing = resolveApplicationLanding(about)
+  const landing = resolveApplicationLanding(snapshot, binding)
   const fallback = landing === null
     ? <Result status="403" title="没有可访问页面" subTitle="当前激活角色没有可用的本地路由。" />
     : <Navigate to={landing} replace />
@@ -27,18 +27,18 @@ export const ApplicationRouter = ({ embedded = false }: { readonly embedded?: bo
 }
 
 const RouteAccessGuard = ({ route, children }: PropsWithChildren<{ readonly route: FeatureRouteDescriptor }>) => {
-    const {about} = useRbac3Authorization()
-  if (!about || !isRouteAllowed(about, route)) return <Result status="403" title="无权访问此页面" subTitle="路由已在客户端隐藏，服务端仍会独立执行授权校验。" />
+    const {about, snapshot, binding} = useRbac3Authorization()
+  if (!about || !isRouteAllowed(snapshot, binding, route)) return <Result status="403" title="无权访问此页面" subTitle="路由已在客户端隐藏，服务端仍会独立执行授权校验。" />
   return children
 }
 
 const AdminLayout = ({ children, embedded = false }: PropsWithChildren<{ readonly embedded?: boolean }>) => {
-    const {about} = useRbac3Authorization()
+    const {about, snapshot, binding} = useRbac3Authorization()
   if (!about) return null
   // 导航由 SDK 的 visibleNavigation 提供（含权限过滤），shared 只负责渲染与高亮。
   const config: EnterpriseLayoutConfig = {
     platformName: 'Tianquan-Jianshen 权限平台',
-    navigation: visibleNavigation(about),
+    navigation: visibleNavigation(snapshot, binding),
     user: {
         name: about.user.subject,
         menu: [],

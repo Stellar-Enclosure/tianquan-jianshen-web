@@ -1,4 +1,6 @@
-import {type Rbac3Client, Rbac3Provider} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+vi.mock('../../permissions/FieldCatalog', () => ({useWritableFields: () => true, useWritableFieldKeys: () => true}))
+import {TestAuthorizationProvider, createAuthorizationFixtureClient} from '../../test/authorization'
+import {type Rbac3Client} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react'
 import type {PropsWithChildren} from 'react'
@@ -113,23 +115,12 @@ describe('assignment pages', () => {
 })
 
 const wrapper = (request: FeatureApiClient['request'], permissions: readonly string[]) => ({ children }: PropsWithChildren) => {
-  const sdk = {
-    getAbout: async () => ({
-        user: {id: '7', tenantId: '9', identitySub: 'assignment-test', status: 'ACTIVE'},
-        permissions,
-        fieldPolicies: {},
-      activeRoleContexts: [], apps: [], menus: [], routes: [], actions: [],
-        defaultApplicationCode: null,
-        defaultRoute: null,
-        authVersion: 1,
-        policyVersion: 1,
-    }),
-  } as unknown as Rbac3Client
+  const sdk = createAuthorizationFixtureClient({subject:'assignment-test',tenantId:'9',permissionCodes:permissions,authVersion:1,policyVersion:1}, {}) as unknown as Rbac3Client
   return (
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <Rbac3Provider client={sdk}>
+        <TestAuthorizationProvider client={sdk}>
         <FeatureApiProvider client={{ request }}>{children}</FeatureApiProvider>
-      </Rbac3Provider>
+      </TestAuthorizationProvider>
     </QueryClientProvider>
   )
 }

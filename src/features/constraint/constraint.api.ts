@@ -1,3 +1,4 @@
+import type {CatalogScope} from '../registration/registration.api'
 import type { FeatureApiClient } from '../shared/FeatureApi'
 
 export interface MutationResult {
@@ -39,23 +40,13 @@ export interface RuleReference {
 }
 
 export interface DataRuleCommand {
+  readonly target: CatalogScope
   readonly applicationId: string
   readonly roleId: string
   readonly permissionId: string
   readonly scopeType: string
   readonly directorySnapshotVersion: number | null
   readonly references: readonly RuleReference[]
-  readonly validFrom: string
-  readonly validTo: string | null
-  readonly expectedVersion: number
-}
-
-export interface FieldRuleCommand {
-  readonly applicationId: string
-  readonly roleId: string
-  readonly permissionId: string
-  readonly fieldDefinitionId: string
-  readonly accessLevel: string
   readonly validFrom: string
   readonly validTo: string | null
   readonly expectedVersion: number
@@ -84,23 +75,13 @@ export interface SodSetView {
 }
 
 export interface DataRuleView {
+  readonly target: CatalogScope
   readonly ruleId: string
   readonly applicationId: string
   readonly roleId: string
   readonly permissionId: string
   readonly scopeType: string
   readonly references: readonly RuleReference[]
-  readonly status: string
-  readonly version: number
-}
-
-export interface FieldRuleView {
-  readonly ruleId: string
-  readonly applicationId: string
-  readonly roleId: string
-  readonly permissionId: string
-  readonly fieldDefinitionId: string
-  readonly accessLevel: string
   readonly status: string
   readonly version: number
 }
@@ -133,22 +114,13 @@ export const constraintApi = (client: FeatureApiClient) => ({
     `/api/tianquan-jianshen/v1/iam/policies/roles/${encodeURIComponent(roleId)}/cardinality`,
     {method: 'PUT', body: command},
   ),
-  dataRules: () => client.request<readonly DataRuleView[]>('/api/tianquan-jianshen/v1/iam/policies/data-rules'),
+  dataRules: (target: CatalogScope) => client.request<readonly DataRuleView[]>('/api/tianquan-jianshen/v1/iam/policies/data-rules', {query: {...target}}),
   createDataRule: (command: DataRuleCommand) => client.request<MutationResult>(
     '/api/tianquan-jianshen/v1/iam/policies/data-rules',
     {method: 'POST', body: command},
   ),
   updateDataRule: (ruleId: string, command: DataRuleCommand) => client.request<MutationResult>(
     `/api/tianquan-jianshen/v1/iam/policies/data-rules/${encodeURIComponent(ruleId)}`,
-    {method: 'PUT', body: command},
-  ),
-  fieldRules: () => client.request<readonly FieldRuleView[]>('/api/tianquan-jianshen/v1/iam/policies/field-rules'),
-  createFieldRule: (command: FieldRuleCommand) => client.request<MutationResult>(
-    '/api/tianquan-jianshen/v1/iam/policies/field-rules',
-    {method: 'POST', body: command},
-  ),
-  updateFieldRule: (ruleId: string, command: FieldRuleCommand) => client.request<MutationResult>(
-    `/api/tianquan-jianshen/v1/iam/policies/field-rules/${encodeURIComponent(ruleId)}`,
     {method: 'PUT', body: command},
   ),
   operationSodRules: () => client.request<readonly OperationSodRuleView[]>('/api/tianquan-jianshen/v1/iam/policies/operation-sod-rules'),

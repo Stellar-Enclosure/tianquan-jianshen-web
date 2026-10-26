@@ -2,6 +2,7 @@ import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianqu
 import {createContext, type PropsWithChildren, useContext, useMemo,} from 'react'
 
 export interface FeatureApiRequest {
+  readonly signal?: AbortSignal
   readonly method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   readonly query?: Readonly<Record<string, string | number | boolean | null | undefined>>
   readonly body?: unknown

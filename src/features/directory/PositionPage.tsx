@@ -1,4 +1,6 @@
-import {PermissionGuard, useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {useWritableFields} from '../../permissions/FieldCatalog'
+import {ResourceGuard} from '../../permissions/ResourceGuard'
+import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Descriptions, Drawer, Form, Input, Popconfirm, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
@@ -68,6 +70,7 @@ export const PositionPage = () => {
         })
         setEditorOpen(true)
     }
+    const fieldsWritable = useWritableFields(editingPosition ? 'PositionFacade$UpdateCommand' : 'PositionFacade$CreateCommand')
     const save = useMutation({
         mutationFn: (values: PositionFormValues) => {
             if (editingPosition) {
@@ -111,9 +114,9 @@ export const PositionPage = () => {
             extra={(
                 <Space>
                     <Button onClick={() => {void query.refetch()}}>刷新</Button>
-                    <PermissionGuard permission="system:position:manage">
+                    <ResourceGuard resourceKey="tianquan-jianshen.button.PositionPage.manage1">
                         <Button type="primary" onClick={openCreate}>新增岗位</Button>
-                    </PermissionGuard>
+                    </ResourceGuard>
                 </Space>
             )}
         >
@@ -193,7 +196,7 @@ export const PositionPage = () => {
                 size="large"
             >
                 {editingPosition || editorOpen ? (
-                    <Form form={editorForm} layout="vertical" onFinish={(values) => save.mutate(values)}>
+                    <Form disabled={!fieldsWritable} form={editorForm} layout="vertical" onFinish={(values) => fieldsWritable && save.mutate(values)}>
                         <Form.Item name="code" label="岗位编码" rules={[{required: !editingPosition, whitespace: true}]}>
                             <Input disabled={editingPosition !== null} />
                         </Form.Item>
@@ -228,7 +231,7 @@ export const PositionPage = () => {
                             <Descriptions.Item label="状态">{selectedPosition.status}</Descriptions.Item>
                             <Descriptions.Item label="版本">{selectedPosition.version}</Descriptions.Item>
                         </Descriptions>
-                        <PermissionGuard permission="system:position:manage">
+                        <ResourceGuard resourceKey="tianquan-jianshen.button.PositionPage.manage2">
                             <Space>
                                 {selectedPosition.snapshotId === null && (
                                     <Button onClick={() => openEdit(selectedPosition)}>编辑</Button>
@@ -244,7 +247,7 @@ export const PositionPage = () => {
                                     </Popconfirm>
                                 )}
                             </Space>
-                        </PermissionGuard>
+                        </ResourceGuard>
                     </Space>
                 ) : null}
             </Drawer>

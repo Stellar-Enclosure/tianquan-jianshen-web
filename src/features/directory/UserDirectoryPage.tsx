@@ -1,5 +1,7 @@
+import {useWritableFields} from '../../permissions/FieldCatalog'
+import {ResourceGuard} from '../../permissions/ResourceGuard'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {PermissionGuard, useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {Button, Card, Descriptions, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag} from 'antd'
 import {useState} from 'react'
@@ -72,6 +74,8 @@ export const UserDirectoryPage = ({initialUserId = ''}: UserDirectoryPageProps) 
     ])
   }
 
+  const fieldsWritable = useWritableFields(editingUser ? 'UpdateUserCommandDTO' : 'CreateUserCommandDTO')
+  const statusWritable = useWritableFields('UserStatusCommandDTO')
   const saveUser = useMutation({
     mutationFn: (values: UserFormValues) => editingUser
       ? api.updateUser(editingUser.userId, {
@@ -130,7 +134,7 @@ export const UserDirectoryPage = ({initialUserId = ''}: UserDirectoryPageProps) 
 
   const submitUser = async () => {
     try {
-      saveUser.mutate(await userForm.validateFields())
+      if (fieldsWritable) saveUser.mutate(await userForm.validateFields())
     } catch {
       return
     }
@@ -144,9 +148,9 @@ export const UserDirectoryPage = ({initialUserId = ''}: UserDirectoryPageProps) 
       <Card
         title="用户目录"
         extra={(
-          <PermissionGuard permission="system:user:manage">
+          <ResourceGuard resourceKey="tianquan-jianshen.button.UserDirectoryPage.manage1.system.user.manage">
             <Button type="primary" onClick={openCreate}>新增用户</Button>
-          </PermissionGuard>
+          </ResourceGuard>
         )}
       >
         <Space.Compact block>
@@ -243,17 +247,17 @@ export const UserDirectoryPage = ({initialUserId = ''}: UserDirectoryPageProps) 
                   render: (_value: unknown, user: UserDirectoryView) => (
                     <Space>
                       <Button size="small" onClick={() => { setUserId(user.userId); setDraftUserId(user.userId) }}>详情</Button>
-                      <PermissionGuard permission="system:user:manage">
+                      <ResourceGuard resourceKey="tianquan-jianshen.button.UserDirectoryPage.manage2">
                         <Button size="small" onClick={() => openEdit(user)}>编辑绑定</Button>
                         <Popconfirm title="确认归档该用户成员？" onConfirm={() => deleteUser.mutate(user)}>
                           <Button size="small" danger loading={deleteUser.isPending && deleteUser.variables?.userId === user.userId}>归档</Button>
                         </Popconfirm>
-                      </PermissionGuard>
-                      <PermissionGuard permission="system:user-status:manage">
-                        <Button size="small" loading={changeStatus.isPending && changeStatus.variables?.userId === user.userId} onClick={() => changeStatus.mutate(user)}>
+                      </ResourceGuard>
+                      <ResourceGuard resourceKey="tianquan-jianshen.button.UserDirectoryPage.manage1.system.user-status.manage">
+                        <Button size="small" disabled={!statusWritable} loading={changeStatus.isPending && changeStatus.variables?.userId === user.userId} onClick={() => changeStatus.mutate(user)}>
                           {user.status === 'ACTIVE' ? '停用' : '启用'}
                         </Button>
-                      </PermissionGuard>
+                      </ResourceGuard>
                     </Space>
                   ),
                 },
@@ -271,6 +275,7 @@ export const UserDirectoryPage = ({initialUserId = ''}: UserDirectoryPageProps) 
       )}
 
       <Modal
+        okButtonProps={{disabled: !fieldsWritable}}
         open={userModalOpen}
         title={editingUser ? '编辑用户身份绑定' : '新增用户成员'}
         onCancel={() => { setUserModalOpen(false); setEditingUser(null) }}
@@ -279,7 +284,7 @@ export const UserDirectoryPage = ({initialUserId = ''}: UserDirectoryPageProps) 
         confirmLoading={saveUser.isPending}
         destroyOnHidden
       >
-        <Form form={userForm} layout="vertical">
+        <Form disabled={!fieldsWritable} form={userForm} layout="vertical">
           <Form.Item name="identitySub" label="身份标识" rules={[{required: true}]}>
             <Input />
           </Form.Item>

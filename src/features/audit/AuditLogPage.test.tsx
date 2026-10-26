@@ -1,41 +1,23 @@
-import {type Rbac3Client, Rbac3Provider} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+vi.mock('../../permissions/FieldCatalog', () => ({useWritableFields: () => true, useWritableFieldKeys: () => true}))
+import {TestAuthorizationProvider, createAuthorizationFixtureClient} from '../../test/authorization'
+import {type Rbac3Client} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import type {PropsWithChildren} from 'react'
-import {describe, expect, it} from 'vitest'
+import {describe, expect, it, vi} from 'vitest'
 import {type FeatureApiClient, FeatureApiProvider} from '../shared/FeatureApi'
 import {AuditLogPage} from './AuditLogPage'
 
 const wrapper = ({ children }: PropsWithChildren) => {
-    const sdk = {
-        getAbout: async () => ({
-            user: {
-                id: '7',
-                tenantId: '9',
-                identitySub: 'audit-test',
-                status: 'ACTIVE'
-            },
-            permissions: ['system:audit:read'],
-            fieldPolicies: {},
-            activeRoleContexts: [],
-            apps: [],
-            menus: [],
-            routes: [],
-            actions: [],
-            defaultApplicationCode: null,
-            defaultRoute: null,
-            authVersion: 1,
-            policyVersion: 1
-        })
-    } as unknown as Rbac3Client
+    const sdk = createAuthorizationFixtureClient({subject:'audit-test',tenantId:'9',permissionCodes:['system:audit:read'],authVersion:1,policyVersion:1}, {}) as unknown as Rbac3Client
   const api: FeatureApiClient = { request: async <T,>() => ({ items: [{
     id: '601', tenantId: '9', eventType: 'AUTHORIZATION_DENIED', outcome: 'DENY', severity: 'WARN', actorType: 'USER', actorId: '7',
     targetType: 'RESOURCE', targetId: 'orders.list', reasonCode: 'PERMISSION_MISSING', requestId: 'req-1', traceId: 'trace-1',
     beforeSnapshot: { password: 'should-not-render', status: 'ACTIVE' }, afterSnapshot: { token: 'should-not-render', status: 'DENIED' },
     payloadChecksum: 'checksum', createdAt: '2026-08-01T00:00:00Z',
   }], nextCursor: null }) as T }
-    return <QueryClientProvider client={new QueryClient()}><Rbac3Provider client={sdk}><FeatureApiProvider
-        client={api}>{children}</FeatureApiProvider></Rbac3Provider></QueryClientProvider>
+    return <QueryClientProvider client={new QueryClient()}><TestAuthorizationProvider client={sdk}><FeatureApiProvider
+        client={api}>{children}</FeatureApiProvider></TestAuthorizationProvider></QueryClientProvider>
 }
 
 describe('audit log page', () => {

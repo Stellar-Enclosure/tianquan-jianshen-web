@@ -1,24 +1,18 @@
+vi.mock('../../permissions/FieldCatalog', () => ({useWritableFields: () => true, useWritableFieldKeys: () => true}))
+import {TestAuthorizationProvider, createAuthorizationFixtureClient} from '../../test/authorization'
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
-import {type Rbac3Client, Rbac3Provider} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {type Rbac3Client} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import type {PropsWithChildren} from 'react'
 import {MemoryRouter} from 'react-router-dom'
 import {describe, expect, it, vi} from 'vitest'
 import {type FeatureApiClient, FeatureApiProvider} from '../shared/FeatureApi'
 import {RoleGraphPage} from './RoleGraphPage'
-import {RoleResourceGrantPage} from './RoleResourceGrantPage'
 import {roleApi} from './role.api'
 
 const wrapper = ({ children }: PropsWithChildren) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const sdk = {
-    getAbout: async () => ({
-        user: {id: '7', tenantId: '42', identitySub: 'role-test', status: 'ACTIVE'},
-      permissions: ['system:role:read', 'system:role:create', 'system:role-resource:read'],
-        fieldPolicies: {}, activeRoleContexts: [], apps: [], menus: [], routes: [], actions: [],
-        defaultApplicationCode: null, defaultRoute: null, authVersion: 1, policyVersion: 1,
-    }),
-  } as unknown as Rbac3Client
+  const sdk = createAuthorizationFixtureClient({subject:'role-test',tenantId:'42',permissionCodes:['system:role:read', 'system:role:create', 'system:role-permission:read'],authVersion:1,policyVersion:1}, {}) as unknown as Rbac3Client
   const api: FeatureApiClient = {
     request: async <T,>(path: string) => (path.endsWith('/resources')
       ? {
@@ -43,11 +37,11 @@ const wrapper = ({ children }: PropsWithChildren) => {
   }
   return (
     <QueryClientProvider client={queryClient}>
-        <Rbac3Provider client={sdk}>
+        <TestAuthorizationProvider client={sdk}>
         <FeatureApiProvider client={api}>
           <MemoryRouter initialEntries={['/iam/roles']}>{children}</MemoryRouter>
         </FeatureApiProvider>
-      </Rbac3Provider>
+      </TestAuthorizationProvider>
     </QueryClientProvider>
   )
 }
@@ -90,13 +84,6 @@ describe('role pages', () => {
     expect(screen.getByText('Ambiguous')).toBeInTheDocument()
   })
 
-  it('configures readable resource roots without exposing permission characters', async () => {
-    render(<RoleResourceGrantPage roleId="2" />, { wrapper })
-    await waitFor(() => expect(screen.getByText('用户管理')).toBeInTheDocument())
-    expect(screen.getByText(/用户列表/)).toBeInTheDocument()
-    expect(screen.queryByText(/system:|permissionId/i)).not.toBeInTheDocument()
-  })
-
   it('offers the five backend role types instead of treating hierarchy as a type', async () => {
     render(<RoleGraphPage applicationId="71" />, {wrapper})
     fireEvent.click(await screen.findByRole('button', {name: '新建角色'}))
@@ -108,11 +95,11 @@ describe('role pages', () => {
     expect(screen.queryByText('业务角色')).not.toBeInTheDocument()
   })
 
-  it('exposes resource authorization from every role card', async () => {
+  it('exposes permission grants from every role card', async () => {
     render(<RoleGraphPage applicationId="71" />, {wrapper})
 
     await waitFor(() => expect(screen.getByText('根角色')).toBeInTheDocument())
-    expect(screen.getAllByRole('link', {name: '资源授权'}).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('link', {name: '资源授权'})[0]).toHaveAttribute('href', '/iam/roles/1/resources')
+    expect(screen.getAllByRole('link', {name: '权限字符授权'}).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', {name: '权限字符授权'})[0]).toHaveAttribute('href', '/iam/roles/1/permissions')
   })
 })

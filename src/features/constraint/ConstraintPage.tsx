@@ -1,4 +1,8 @@
-import {PermissionGuard, useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {useWritableFields} from '../../permissions/FieldCatalog'
+import {CatalogScopePicker, useCatalogScope} from '../registration/CatalogScopePicker'
+import {catalogScopeKey, type CatalogScope} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
+import {ResourceGuard, useResourcePermission} from '../../permissions/ResourceGuard'
+import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Form, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag, Typography} from 'antd'
 import {useState} from 'react'
@@ -9,8 +13,6 @@ import {
   type CardinalityCommand,
   type DataRuleCommand,
   type DataRuleView,
-  type FieldRuleCommand,
-  type FieldRuleView,
   type OperationSodRuleCommand,
   type OperationSodRuleView,
   type PrerequisiteGroupCommand,
@@ -36,8 +38,8 @@ export const validateDsdRoleSelection = (
   return null
 }
 
-type RuleKind = 'sod' | 'data' | 'field' | 'operation'
-type ConstraintRow = SodSetView | DataRuleView | FieldRuleView | OperationSodRuleView
+type RuleKind = 'sod' | 'data' | 'operation'
+type ConstraintRow = SodSetView | DataRuleView | OperationSodRuleView
 
 interface ConstraintFormValues {
   readonly setCode?: string
@@ -58,8 +60,6 @@ interface ConstraintFormValues {
   readonly directorySnapshotVersion?: number
   readonly references?: string
   readonly permissionId?: string
-  readonly fieldDefinitionId?: string
-  readonly accessLevel?: string
   readonly applicationCode?: string
   readonly businessResource?: string
   readonly priorActionCode?: string
@@ -69,12 +69,14 @@ interface ConstraintFormValues {
 
 interface EditorState {
   readonly kind: RuleKind
+  readonly target?: CatalogScope
   readonly rowId: string | null
   readonly initialValues: ConstraintFormValues
 }
 
 interface RuleSaveInput {
   readonly kind: RuleKind
+  readonly target?: CatalogScope
   readonly rowId: string | null
   readonly values: ConstraintFormValues
 }
@@ -97,10 +99,9 @@ interface CardinalityFormValues {
 }
 
 const managementPermission: Record<RuleKind, string> = {
-  sod: 'system:authorization-constraint:manage',
-  data: 'system:data-rule:manage',
-  field: 'system:field-rule:manage',
-  operation: 'system:operation-sod:manage',
+  sod: 'tianquan-jianshen.button.ConstraintPage.sod',
+  data: 'tianquan-jianshen.button.ConstraintPage.data',
+  operation: 'tianquan-jianshen.button.ConstraintPage.operation',
 }
 
 const localDateTime = (value?: string | null): string => {
@@ -168,18 +169,7 @@ const initialValues = (kind: RuleKind, row?: ConstraintRow): ConstraintFormValue
       expectedVersion: value.version,
     }
   }
-  if (kind === 'field') {
-    const value = row as FieldRuleView
-    return {
-      ...base,
-      applicationId: value.applicationId,
-      roleId: value.roleId,
-      permissionId: value.permissionId,
-      fieldDefinitionId: value.fieldDefinitionId,
-      accessLevel: value.accessLevel,
-      expectedVersion: value.version,
-    }
-  }
+
   const value = row as OperationSodRuleView
   return {
     ...base,
@@ -191,7 +181,7 @@ const initialValues = (kind: RuleKind, row?: ConstraintRow): ConstraintFormValue
   }
 }
 
-const commandFor = (kind: RuleKind, values: ConstraintFormValues): SodSetCommand | DataRuleCommand | FieldRuleCommand | OperationSodRuleCommand => {
+const commandFor = (kind: RuleKind, values: ConstraintFormValues, target?: CatalogScope): SodSetCommand | DataRuleCommand | OperationSodRuleCommand => {
   const validFrom = isoDateTime(values.validFrom, new Date().toISOString())!
   const validTo = isoDateTime(values.validTo)
   if (kind === 'sod') {
@@ -207,7 +197,9 @@ const commandFor = (kind: RuleKind, values: ConstraintFormValues): SodSetCommand
     }
   }
   if (kind === 'data') {
+    if (!target) throw new Error('请选择已配置的权限目录范围')
     return {
+      target,
       applicationId: values.applicationId?.trim() ?? '',
       roleId: values.roleId?.trim() ?? '',
       permissionId: values.permissionId?.trim() ?? '',
@@ -219,18 +211,7 @@ const commandFor = (kind: RuleKind, values: ConstraintFormValues): SodSetCommand
       expectedVersion: values.expectedVersion ?? 0,
     }
   }
-  if (kind === 'field') {
-    return {
-      applicationId: values.applicationId?.trim() ?? '',
-      roleId: values.roleId?.trim() ?? '',
-      permissionId: values.permissionId?.trim() ?? '',
-      fieldDefinitionId: values.fieldDefinitionId?.trim() ?? '',
-      accessLevel: values.accessLevel?.trim() ?? '',
-      validFrom,
-      validTo,
-      expectedVersion: values.expectedVersion ?? 0,
-    }
-  }
+
   return {
     applicationCode: values.applicationCode?.trim() ?? '',
     businessResource: values.businessResource?.trim() ?? '',
@@ -250,26 +231,33 @@ export const ConstraintPage = () => {
   const queryClient = useQueryClient()
   const tenant = effectiveTenantId ?? 'none'
   const enabled = status === 'READY'
+  const canReadSod = useResourcePermission('tianquan-jianshen.component.ConstraintPage.sod')
+  const canReadData = useResourcePermission('tianquan-jianshen.component.ConstraintPage.data')
+  const canReadOperations = useResourcePermission('tianquan-jianshen.component.ConstraintPage.operation')
+  const scope = useCatalogScope(undefined, canReadData)
+  const target = scope.selected?.scope
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [form] = Form.useForm<ConstraintFormValues>()
-  const sod = useQuery({queryKey: ['tianquan-jianshen', 'sod', tenant], queryFn: api.sodSets, enabled})
-  const data = useQuery({queryKey: ['tianquan-jianshen', 'data-rules', tenant], queryFn: api.dataRules, enabled})
-  const fields = useQuery({queryKey: ['tianquan-jianshen', 'field-rules', tenant], queryFn: api.fieldRules, enabled})
-  const operations = useQuery({queryKey: ['tianquan-jianshen', 'operation-sod', tenant], queryFn: api.operationSodRules, enabled})
+  const sodWritable = useWritableFields('SodSetRequestDTO')
+  const dataWritable = useWritableFields('DataRuleRequestDTO', 'RuleReferenceVO')
+  const operationWritable = useWritableFields('OperationSodRuleRequestDTO')
+  const prerequisiteWritable = useWritableFields('PrerequisiteGroupRequestDTO')
+  const cardinalityWritable = useWritableFields('CardinalityRequestDTO')
+  const editorWritable = editor ? ({sod: sodWritable, data: dataWritable, operation: operationWritable})[editor.kind] : false
+  const sod = useQuery({queryKey: ['tianquan-jianshen', 'sod', tenant], queryFn: api.sodSets, enabled: enabled && canReadSod})
+  const data = useQuery({queryKey: ['tianquan-jianshen', 'data-rules', tenant, target && catalogScopeKey(target)], queryFn: () => api.dataRules(target!), enabled: enabled && canReadData && Boolean(target)})
+  const operations = useQuery({queryKey: ['tianquan-jianshen', 'operation-sod', tenant], queryFn: api.operationSodRules, enabled: enabled && canReadOperations})
   const save = useMutation({
-    mutationFn: ({kind, rowId, values}: RuleSaveInput) => {
+    mutationFn: ({kind, rowId, values, target: frozenTarget}: RuleSaveInput) => {
       if (kind === 'sod') {
         const command = commandFor(kind, values) as SodSetCommand
         return rowId ? api.updateSod(rowId, command) : api.createSod(command)
       }
       if (kind === 'data') {
-        const command = commandFor(kind, values) as DataRuleCommand
+        const command = commandFor(kind, values, frozenTarget) as DataRuleCommand
         return rowId ? api.updateDataRule(rowId, command) : api.createDataRule(command)
       }
-      if (kind === 'field') {
-        const command = commandFor(kind, values) as FieldRuleCommand
-        return rowId ? api.updateFieldRule(rowId, command) : api.createFieldRule(command)
-      }
+
       const command = commandFor(kind, values) as OperationSodRuleCommand
       return rowId ? api.updateOperationSodRule(rowId, command) : api.createOperationSodRule(command)
     },
@@ -277,7 +265,6 @@ export const ConstraintPage = () => {
       setEditor(null)
       await queryClient.invalidateQueries({queryKey: ['tianquan-jianshen', 'sod', tenant]})
       await queryClient.invalidateQueries({queryKey: ['tianquan-jianshen', 'data-rules', tenant]})
-      await queryClient.invalidateQueries({queryKey: ['tianquan-jianshen', 'field-rules', tenant]})
       await queryClient.invalidateQueries({queryKey: ['tianquan-jianshen', 'operation-sod', tenant]})
     },
   })
@@ -302,7 +289,10 @@ export const ConstraintPage = () => {
   })
   const mutationError = save.error ?? savePrerequisites.error ?? saveCardinality.error
   const openEditor = (kind: RuleKind, row?: ConstraintRow) => {
-    setEditor({kind, rowId: row ? rowId(kind, row) : null, initialValues: initialValues(kind, row)})
+    if (kind === 'data' && !scope.selected) return
+    setEditor({kind, target: kind === 'data' ? (row as DataRuleView | undefined)?.target ?? target : undefined,
+      rowId: row ? rowId(kind, row) : null, initialValues: {...initialValues(kind, row),
+        ...(kind === 'data' && !row ? {applicationId: scope.selected!.applicationId} : {})}})
   }
 
   return (
@@ -315,7 +305,7 @@ export const ConstraintPage = () => {
           type="error"
           showIcon
           title={mutationError instanceof Error ? mutationError.message : '授权约束保存失败'}
-          action={<Button size="small" onClick={() => {void sod.refetch(); void data.refetch(); void fields.refetch(); void operations.refetch()}}>刷新</Button>}
+          action={<Button size="small" onClick={() => {if (canReadSod) void sod.refetch(); if (canReadData && target) void data.refetch(); if (canReadOperations) void operations.refetch()}}>刷新</Button>}
           style={{marginBottom: 16}}
         />
       )}
@@ -331,9 +321,9 @@ export const ConstraintPage = () => {
                 pagination={false}
                 scroll={{x: 'max-content'}}
                 title={() => (
-                  <PermissionGuard permission={managementPermission.sod}>
+                  <ResourceGuard resourceKey={managementPermission.sod}>
                     <Button type="primary" onClick={() => openEditor('sod')}>新增 SSD / DSD 集合</Button>
-                  </PermissionGuard>
+                  </ResourceGuard>
                 )}
                 columns={[
                   {title: '集合编码', dataIndex: 'setCode'},
@@ -343,7 +333,7 @@ export const ConstraintPage = () => {
                   {title: '激活根角色', dataIndex: 'roleIds', render: (ids: readonly string[]) => ids.join(', ')},
                   {title: '状态', dataIndex: 'status'},
                   {title: '版本', dataIndex: 'version'},
-                  {title: '操作', render: (_value: unknown, row: SodSetView) => <PermissionGuard permission={managementPermission.sod}><Button size="small" onClick={() => openEditor('sod', row)}>编辑</Button></PermissionGuard>},
+                  {title: '操作', render: (_value: unknown, row: SodSetView) => <ResourceGuard resourceKey={managementPermission.sod}><Button size="small" onClick={() => openEditor('sod', row)}>编辑</Button></ResourceGuard>},
                 ]}
               />
             </PageState>
@@ -353,13 +343,13 @@ export const ConstraintPage = () => {
           key: 'data',
           label: `数据规则 (${data.data?.length ?? 0})`,
           children: (
-            <PageState loading={data.isPending} error={data.error} empty={data.data?.length === 0} onRetry={() => {void data.refetch()}}>
+            <><CatalogScopePicker value={scope} /><PageState loading={Boolean(target) && data.isPending} error={data.error} empty={data.data?.length === 0} onRetry={() => {void data.refetch()}}>
               <Table<DataRuleView>
                 rowKey="ruleId"
                 dataSource={data.data ?? []}
                 pagination={false}
                 scroll={{x: 'max-content'}}
-                title={() => <PermissionGuard permission={managementPermission.data}><Button type="primary" onClick={() => openEditor('data')}>新增数据规则</Button></PermissionGuard>}
+                title={() => <ResourceGuard resourceKey={managementPermission.data}><Button type="primary" disabled={!target} onClick={() => openEditor('data')}>新增数据规则</Button></ResourceGuard>}
                 columns={[
                   {title: '应用', dataIndex: 'applicationId'},
                   {title: '角色', dataIndex: 'roleId'},
@@ -368,37 +358,13 @@ export const ConstraintPage = () => {
                   {title: '引用', dataIndex: 'references', render: (references: DataRuleView['references']) => referencesValue(references)},
                   {title: '状态', dataIndex: 'status'},
                   {title: '版本', dataIndex: 'version'},
-                  {title: '操作', render: (_value: unknown, row: DataRuleView) => <PermissionGuard permission={managementPermission.data}><Button size="small" onClick={() => openEditor('data', row)}>编辑</Button></PermissionGuard>},
+                  {title: '操作', render: (_value: unknown, row: DataRuleView) => <ResourceGuard resourceKey={managementPermission.data}><Button size="small" onClick={() => openEditor('data', row)}>编辑</Button></ResourceGuard>},
                 ]}
               />
-            </PageState>
+            </PageState></>
           ),
         },
-        {
-          key: 'field',
-          label: `字段规则 (${fields.data?.length ?? 0})`,
-          children: (
-            <PageState loading={fields.isPending} error={fields.error} empty={fields.data?.length === 0} onRetry={() => {void fields.refetch()}}>
-              <Table<FieldRuleView>
-                rowKey="ruleId"
-                dataSource={fields.data ?? []}
-                pagination={false}
-                scroll={{x: 'max-content'}}
-                title={() => <PermissionGuard permission={managementPermission.field}><Button type="primary" onClick={() => openEditor('field')}>新增字段规则</Button></PermissionGuard>}
-                columns={[
-                  {title: '应用', dataIndex: 'applicationId'},
-                  {title: '角色', dataIndex: 'roleId'},
-                  {title: '权限', dataIndex: 'permissionId'},
-                  {title: '字段', dataIndex: 'fieldDefinitionId'},
-                  {title: '访问级别', dataIndex: 'accessLevel'},
-                  {title: '状态', dataIndex: 'status'},
-                  {title: '版本', dataIndex: 'version'},
-                  {title: '操作', render: (_value: unknown, row: FieldRuleView) => <PermissionGuard permission={managementPermission.field}><Button size="small" onClick={() => openEditor('field', row)}>编辑</Button></PermissionGuard>},
-                ]}
-              />
-            </PageState>
-          ),
-        },
+
         {
           key: 'operation',
           label: `Operation SOD (${operations.data?.length ?? 0})`,
@@ -409,7 +375,7 @@ export const ConstraintPage = () => {
                 dataSource={operations.data ?? []}
                 pagination={false}
                 scroll={{x: 'max-content'}}
-                title={() => <PermissionGuard permission={managementPermission.operation}><Button type="primary" onClick={() => openEditor('operation')}>新增 Operation SOD</Button></PermissionGuard>}
+                title={() => <ResourceGuard resourceKey={managementPermission.operation}><Button type="primary" onClick={() => openEditor('operation')}>新增 Operation SOD</Button></ResourceGuard>}
                 columns={[
                   {title: '应用编码', dataIndex: 'applicationCode'},
                   {title: '业务对象', dataIndex: 'businessResource'},
@@ -417,22 +383,22 @@ export const ConstraintPage = () => {
                   {title: '禁止后置动作', dataIndex: 'forbiddenLaterActionCode'},
                   {title: '状态', dataIndex: 'status'},
                   {title: '版本', dataIndex: 'version'},
-                  {title: '操作', render: (_value: unknown, row: OperationSodRuleView) => <PermissionGuard permission={managementPermission.operation}><Button size="small" onClick={() => openEditor('operation', row)}>编辑</Button></PermissionGuard>},
+                  {title: '操作', render: (_value: unknown, row: OperationSodRuleView) => <ResourceGuard resourceKey={managementPermission.operation}><Button size="small" onClick={() => openEditor('operation', row)}>编辑</Button></ResourceGuard>},
                 ]}
               />
             </PageState>
           ),
         },
-      ]} />
+      ].filter(item => ({sod: canReadSod, data: canReadData, operation: canReadOperations})[item.key])} />
       <Card size="small" title="角色级约束配置" style={{marginTop: 16}}>
         <Typography.Paragraph type="secondary">
           前置条件组和角色容量没有独立列表接口，按角色 ID 直接替换服务端配置；版本号用于防止覆盖其他管理员的修改。
         </Typography.Paragraph>
         <Space orientation="vertical" size="middle" style={{width: '100%'}}>
-          <PermissionGuard permission="system:authorization-constraint:manage">
-            <Form<PrerequisiteFormValues>
+          <ResourceGuard resourceKey="tianquan-jianshen.button.ConstraintPage.manage1">
+            <Form<PrerequisiteFormValues> disabled={!prerequisiteWritable}
               layout="inline"
-              onFinish={(values) => savePrerequisites.mutate(values)}
+              onFinish={(values) => prerequisiteWritable && savePrerequisites.mutate(values)}
               initialValues={{matchMode: 'ALL', expectedRoleVersion: 0}}
             >
               <Form.Item name="roleId" rules={[{required: true, whitespace: true}]}><Input placeholder="目标角色 ID" /></Form.Item>
@@ -442,11 +408,11 @@ export const ConstraintPage = () => {
               <Form.Item name="expectedRoleVersion" rules={[{required: true}]}><InputNumber min={0} precision={0} placeholder="角色版本" /></Form.Item>
               <Button type="primary" htmlType="submit" loading={savePrerequisites.isPending}>保存前置条件</Button>
             </Form>
-          </PermissionGuard>
-          <PermissionGuard permission="system:authorization-constraint:manage">
-            <Form<CardinalityFormValues>
+          </ResourceGuard>
+          <ResourceGuard resourceKey="tianquan-jianshen.button.ConstraintPage.manage2">
+            <Form<CardinalityFormValues> disabled={!cardinalityWritable}
               layout="inline"
-              onFinish={(values) => saveCardinality.mutate(values)}
+              onFinish={(values) => cardinalityWritable && saveCardinality.mutate(values)}
               initialValues={{validFrom: localDateTime(), expectedVersion: 0, maximumActive: 1, scopeType: 'TENANT'}}
             >
               <Form.Item name="roleId" rules={[{required: true, whitespace: true}]}><Input placeholder="目标角色 ID" /></Form.Item>
@@ -457,7 +423,7 @@ export const ConstraintPage = () => {
               <Form.Item name="expectedVersion" rules={[{required: true}]}><InputNumber min={0} precision={0} placeholder="策略版本" /></Form.Item>
               <Button type="primary" htmlType="submit" loading={saveCardinality.isPending}>保存角色容量</Button>
             </Form>
-          </PermissionGuard>
+          </ResourceGuard>
         </Space>
       </Card>
       {editor && (
@@ -467,16 +433,17 @@ export const ConstraintPage = () => {
           onCancel={() => setEditor(null)}
           onOk={() => {void form.submit()}}
           okText="保存"
+          okButtonProps={{disabled: !editorWritable}}
           confirmLoading={save.isPending}
           destroyOnHidden
           width={720}
         >
-          <Form<ConstraintFormValues>
+          <Form<ConstraintFormValues> disabled={!editorWritable}
             key={`${editor.kind}-${editor.rowId ?? 'new'}`}
             form={form}
             layout="vertical"
             initialValues={editor.initialValues}
-            onFinish={(values) => save.mutate({kind: editor.kind, rowId: editor.rowId, values})}
+            onFinish={(values) => editorWritable && save.mutate({kind: editor.kind, rowId: editor.rowId, target: editor.target, values})}
           >
             {editor.kind === 'sod' && <>
               <Form.Item name="setCode" label="集合编码" rules={[{required: true, whitespace: true}]}><Input /></Form.Item>
@@ -486,20 +453,14 @@ export const ConstraintPage = () => {
               <Form.Item name="memberRoleIds" label="成员角色 ID（逗号分隔）" rules={[{required: true, whitespace: true}]}><Input.TextArea /></Form.Item>
             </>}
             {editor.kind === 'data' && <>
-              <Form.Item name="applicationId" label="应用 ID" rules={[{required: true, whitespace: true}]}><Input /></Form.Item>
-              <Form.Item name="roleId" label="角色 ID" rules={[{required: true, whitespace: true}]}><Input /></Form.Item>
-              <Form.Item name="permissionId" label="权限 ID" rules={[{required: true, whitespace: true}]}><Input /></Form.Item>
+              <Form.Item name="applicationId" label="应用 ID（由目录范围绑定）" rules={[{required: true, whitespace: true}]}><Input disabled /></Form.Item>
+              <Form.Item name="roleId" label="角色 ID" rules={[{required: true, whitespace: true}]}><Input disabled={Boolean(editor.rowId)} /></Form.Item>
+              <Form.Item name="permissionId" label="权限 ID（当前目录）" rules={[{required: true, whitespace: true}]}><Input disabled={Boolean(editor.rowId)} /></Form.Item>
               <Form.Item name="scopeType" label="范围类型" rules={[{required: true, whitespace: true}]}><Input /></Form.Item>
               <Form.Item name="directorySnapshotVersion" label="目录快照版本"><InputNumber min={0} precision={0} style={{width: '100%'}} /></Form.Item>
               <Form.Item name="references" label="范围引用（TYPE:ID，逗号分隔）" rules={[{required: true, whitespace: true}, {validator: referenceValidator}]}><Input.TextArea /></Form.Item>
             </>}
-            {editor.kind === 'field' && <>
-              <Form.Item name="applicationId" label="应用 ID" rules={[{required: true, whitespace: true}]}><Input /></Form.Item>
-              <Form.Item name="roleId" label="角色 ID" rules={[{required: true, whitespace: true}]}><Input /></Form.Item>
-              <Form.Item name="permissionId" label="权限 ID" rules={[{required: true, whitespace: true}]}><Input /></Form.Item>
-              <Form.Item name="fieldDefinitionId" label="字段定义 ID" rules={[{required: true, whitespace: true}]}><Input /></Form.Item>
-              <Form.Item name="accessLevel" label="访问级别" rules={[{required: true, whitespace: true}]}><Input /></Form.Item>
-            </>}
+
             {editor.kind === 'operation' && <>
               <Form.Item name="applicationCode" label="应用编码" rules={[{required: true, whitespace: true}]}><Input /></Form.Item>
               <Form.Item name="businessResource" label="业务对象" rules={[{required: true, whitespace: true}]}><Input /></Form.Item>
@@ -519,12 +480,11 @@ export const ConstraintPage = () => {
 
 const rowId = (kind: RuleKind, row: ConstraintRow): string => {
   if (kind === 'sod') return (row as SodSetView).setId
-  return (row as DataRuleView | FieldRuleView | OperationSodRuleView).ruleId
+  return (row as DataRuleView | OperationSodRuleView).ruleId
 }
 
 const ruleTitle = (kind: RuleKind): string => ({
   sod: 'SSD / DSD 集合',
   data: '数据规则',
-  field: '字段规则',
   operation: 'Operation SOD 规则',
 }[kind])

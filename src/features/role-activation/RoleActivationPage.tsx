@@ -1,14 +1,13 @@
-import {useActiveRoles, usePermission, useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {useResourcePermission} from '../../permissions/ResourceGuard'
+import {useActiveRoles, useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Descriptions, Modal, Space, Tag, Typography} from 'antd'
-import {useCallback, useEffect, useMemo, useState} from 'react'
+import {useMemo, useState} from 'react'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {findDsdConflict, RoleActivationSelector} from './RoleActivationSelector'
 import {roleActivationApi} from './roleActivation.api'
 import {gatewayAuth} from '../auth/gatewayAuth'
-
-const STEP_UP_INTENT_KEY = 'egon.tianquan-jianshen.role-activation.step-up'
 
 interface RoleActivationRequest {
     readonly roleIds: readonly string[]
@@ -17,7 +16,7 @@ interface RoleActivationRequest {
 
 export const RoleActivationPage = () => {
     const authorization = useRbac3Authorization()
-  const canActivateAfterAbout = usePermission('system:role-activation:use')
+  const canActivateAfterAbout = useResourcePermission('tianquan-jianshen.button.RoleActivationPage.use')
   const { replaceActiveRoles } = useActiveRoles()
   const { effectiveTenantId } = useFeatureTenantContext()
   const api = roleActivationApi(useFeatureApi())
@@ -69,47 +68,14 @@ export const RoleActivationPage = () => {
       setSubmitError(error)
     }
   }
-  const resumeStepUpIntent = useCallback(async (request: RoleActivationRequest) => {
-    if (!current.data || request.expectedAuthVersion !== current.data.authVersion) {
-      setSubmitError(new Error('授权版本已变化，请重新选择角色'))
-      return
-    }
-    setSubmitError(null)
-    try {
-      await replaceActiveRoles(request)
-      setSelectionOverride(null)
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['tianquan-jianshen', 'active-roles'] }),
-        queryClient.invalidateQueries({ queryKey: ['tianquan-jianshen', 'activation-candidates'] }),
-      ])
-    } catch (error) {
-      setSubmitError(error)
-    }
-  }, [current.data, queryClient, replaceActiveRoles])
-
-  useEffect(() => {
-    if (!current.data) return
-    const serialized = window.sessionStorage.getItem(STEP_UP_INTENT_KEY)
-    if (serialized === null) return
-    window.sessionStorage.removeItem(STEP_UP_INTENT_KEY)
-    const request = readRoleActivationRequest(serialized)
-    if (request === null) {
-      setSubmitError(new Error('强认证返回状态无效，请重新选择角色'))
-      return
-    }
-    void resumeStepUpIntent(request)
-  }, [current.data, resumeStepUpIntent])
-
   const confirmStepUp = () => {
     if (stepUpRequest === null) return
     setStepUpSubmitting(true)
     setStepUpError(null)
     try {
-      window.sessionStorage.setItem(STEP_UP_INTENT_KEY, JSON.stringify(stepUpRequest))
-      gatewayAuth.stepUp()
+      gatewayAuth.login(undefined, {reauthenticate: true})
       setStepUpSubmitting(false)
     } catch (error) {
-      window.sessionStorage.removeItem(STEP_UP_INTENT_KEY)
       setStepUpError(error)
       setStepUpSubmitting(false)
     }
@@ -181,12 +147,12 @@ export const RoleActivationPage = () => {
             disabled={stepUpSubmitting}
             onClick={() => void confirmStepUp()}
           >
-            确认强认证并激活
+            重新认证
           </Button>,
         ]}
       >
         <Typography.Paragraph type="secondary">
-          所选角色包含高风险或关键权限。继续后将跳转到统一身份平台重新认证，返回后会按当前授权版本重试本次角色集合。
+          所选角色包含高风险或关键权限。继续后将跳转到统一身份平台重新认证，返回后请重新选择角色并确认提交；不会自动重放本次授权变更。重新认证不代表已满足服务端要求的认证强度。
         </Typography.Paragraph>
         {stepUpError !== null && (
           <Alert
@@ -206,24 +172,3 @@ const isStepUpRequired = (error: unknown): boolean => typeof error === 'object'
   && error !== null
   && 'code' in error
   && error.code === 'STEP_UP_REQUIRED'
-
-const readRoleActivationRequest = (serialized: string): RoleActivationRequest | null => {
-  try {
-    const value: unknown = JSON.parse(serialized)
-    if (typeof value !== 'object' || value === null || !('roleIds' in value)
-      || !Array.isArray(value.roleIds)
-      || !value.roleIds.every((roleId) => typeof roleId === 'string')
-      || !('expectedAuthVersion' in value)
-      || typeof value.expectedAuthVersion !== 'number'
-      || !Number.isInteger(value.expectedAuthVersion)
-      || value.expectedAuthVersion < 0) {
-      return null
-    }
-    return {
-      roleIds: value.roleIds,
-      expectedAuthVersion: value.expectedAuthVersion,
-    }
-  } catch {
-    return null
-  }
-}

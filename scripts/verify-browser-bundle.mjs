@@ -8,9 +8,10 @@ const forbidden = [
   'tianquan-jianshen:resource-catalog:report',
   'TIANQUAN_JIANSHEN_SERVICE_ACCESS_TOKEN',
   'SERVICE_ACCESS_TOKEN',
-  'RolePermission',
-  'PermissionResource',
-  '/iam/roles/:roleId/permissions',
+  'typescript/lib/typescript',
+  'node:fs',
+  'registration-client.mjs',
+  'permission-manifest.mjs',
 ]
 
 const files = async (directory) => {

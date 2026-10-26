@@ -1,8 +1,10 @@
+vi.mock('../../permissions/FieldCatalog', () => ({useWritableFields: () => true, useWritableFieldKeys: () => true}))
+import {TestAuthorizationProvider, createAuthorizationFixtureClient} from '../../test/authorization'
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import type {PropsWithChildren} from 'react'
 import {MemoryRouter} from 'react-router-dom'
-import {type Rbac3Client, Rbac3Provider} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {type Rbac3Client} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {FeatureApiProvider, type FeatureApiClient} from '../shared/FeatureApi'
 import {UserRelationsPanel} from './UserRelationsPanel'
@@ -33,28 +35,21 @@ const positionAssignment = {
 }
 
 const wrapper = ({children}: PropsWithChildren) => {
-  const sdk = {
-    getAbout: async () => ({
-      user: {id: '7', tenantId: '42', identitySub: 'relations-test', status: 'ACTIVE'},
-      permissions: [
+  const sdk = createAuthorizationFixtureClient({subject:'relations-test',tenantId:'42',permissionCodes:[
         'system:user-organization:read',
         'system:user-organization:manage',
         'system:user-position:read',
         'system:user-position:manage',
         'system:role-assignment:read',
-      ],
-      fieldPolicies: {}, activeRoleContexts: [], apps: [], menus: [], routes: [], actions: [],
-      defaultApplicationCode: null, defaultRoute: null, authVersion: 3, policyVersion: 1,
-    }),
-  } as unknown as Rbac3Client
+      ],authVersion:3,policyVersion:1}, {}) as unknown as Rbac3Client
   const api: FeatureApiClient = {request: state.request}
   return (
     <QueryClientProvider client={new QueryClient({defaultOptions: {queries: {retry: false}}})}>
-      <Rbac3Provider client={sdk}>
+      <TestAuthorizationProvider client={sdk}>
         <FeatureApiProvider client={api}>
           <MemoryRouter initialEntries={['/iam/users/7']}>{children}</MemoryRouter>
         </FeatureApiProvider>
-      </Rbac3Provider>
+      </TestAuthorizationProvider>
     </QueryClientProvider>
   )
 }

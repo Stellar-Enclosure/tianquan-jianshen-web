@@ -1,4 +1,6 @@
-import {PermissionGuard, useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {useWritableFields} from '../../permissions/FieldCatalog'
+import {ResourceGuard, useResourcePermission} from '../../permissions/ResourceGuard'
+import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Popconfirm, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
@@ -18,7 +20,8 @@ export interface AssignmentListPageProps {
 }
 
 export const AssignmentListPage = ({ userId }: AssignmentListPageProps) => {
-  const {status, about} = useRbac3Authorization()
+  const {status} = useRbac3Authorization()
+  const canManageAssignments = useResourcePermission('tianquan-jianshen.button.AssignmentListPage.manage1')
   const { effectiveTenantId } = useFeatureTenantContext()
   const client = useFeatureApi()
   const api = assignmentApi(client)
@@ -31,7 +34,7 @@ export const AssignmentListPage = ({ userId }: AssignmentListPageProps) => {
   const targetUser = useQuery({
     queryKey: userQueryKey,
     queryFn: () => users.user(userId),
-    enabled: status === 'READY' && about?.permissions.includes('system:role-assignment:manage'),
+    enabled: status === 'READY' && canManageAssignments,
   })
   const refreshAssignments = async () => {
     await Promise.all([
@@ -62,14 +65,15 @@ export const AssignmentListPage = ({ userId }: AssignmentListPageProps) => {
     },
     onSuccess: refreshAssignments,
   })
-  const mutationDisabled = !targetUser.data || targetUser.isError || targetUser.isFetching || create.isPending || change.isPending
+  const fieldsWritable = useWritableFields('RoleAssignmentChangeRequestDTO')
+  const mutationDisabled = !fieldsWritable || !targetUser.data || targetUser.isError || targetUser.isFetching || create.isPending || change.isPending
   return (
     <Card
       title={`用户 ${userId} 的角色任职`}
       extra={(
-        <PermissionGuard permission="system:role-assignment:manage">
+        <ResourceGuard resourceKey="tianquan-jianshen.button.AssignmentListPage.manage1">
           <Button type="primary" disabled={mutationDisabled} onClick={() => setEditorOpen(true)}>新增任职资格</Button>
-        </PermissionGuard>
+        </ResourceGuard>
       )}
     >
       <Alert type="info" showIcon message="任职只定义授权资格与生效窗口；业务系统根据自身语义调用激活角色接口。" />
@@ -92,13 +96,13 @@ export const AssignmentListPage = ({ userId }: AssignmentListPageProps) => {
             {
               title: '操作',
               render: (_value, assignment) => (
-                <PermissionGuard permission="system:role-assignment:manage">
+                <ResourceGuard resourceKey="tianquan-jianshen.button.AssignmentListPage.manage2">
                   <Space>
                     {assignment.status === 'ACTIVE' && <ChangeButton label="暂停" operation="suspend" assignment={assignment} onChange={change.mutate} disabled={mutationDisabled} />}
                     {assignment.status === 'SUSPENDED' && <ChangeButton label="恢复" operation="resume" assignment={assignment} onChange={change.mutate} disabled={mutationDisabled} />}
                     {!['REVOKED', 'EXPIRED'].includes(assignment.status) && <ChangeButton label="撤销" operation="revoke" assignment={assignment} onChange={change.mutate} disabled={mutationDisabled} danger />}
                   </Space>
-                </PermissionGuard>
+                </ResourceGuard>
               ),
             },
           ]}

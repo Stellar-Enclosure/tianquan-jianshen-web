@@ -1,3 +1,4 @@
+import {useWritableFields} from '../../permissions/FieldCatalog'
 import { Alert, Button, Form, Input, InputNumber, Modal, Select } from 'antd'
 import type { CreateAssignmentCommand } from './assignment.api'
 
@@ -19,13 +20,15 @@ export interface AssignmentEditorProps {
   readonly onSave: (command: CreateAssignmentCommand) => void
 }
 
-export const AssignmentEditor = ({ open, saving, error, expectedUserAuthVersion, onCancel, onSave }: AssignmentEditorProps) => (
+export const AssignmentEditor = ({ open, saving, error, expectedUserAuthVersion, onCancel, onSave }: AssignmentEditorProps) => {
+  const fieldsWritable = useWritableFields('AssignRequestDTO')
+  return (
   <Modal title="新增任职资格" open={open} footer={null} onCancel={onCancel} destroyOnHidden>
     {error != null && <Alert type="error" showIcon message={error instanceof Error ? error.message : '任职资格保存失败'} />}
-    <Form<AssignmentForm>
+    <Form<AssignmentForm> disabled={!fieldsWritable}
       layout="vertical"
       initialValues={{ assignmentType: 'DIRECT' }}
-      onFinish={(values) => onSave({
+      onFinish={(values) => fieldsWritable && onSave({
         roleId: values.roleId,
         validFrom: new Date(values.validFrom).toISOString(),
         validTo: values.validTo ? new Date(values.validTo).toISOString() : null,
@@ -53,4 +56,5 @@ export const AssignmentEditor = ({ open, saving, error, expectedUserAuthVersion,
       <Button type="primary" htmlType="submit" loading={saving}>保存资格</Button>
     </Form>
   </Modal>
-)
+  )
+}

@@ -1,4 +1,6 @@
-import {PermissionGuard, useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {useWritableFields} from '../../permissions/FieldCatalog'
+import {ResourceGuard} from '../../permissions/ResourceGuard'
+import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Descriptions, Drawer, Form, Input, Popconfirm, Select, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
@@ -75,6 +77,7 @@ export const OrganizationPage = () => {
         })
         setEditorOpen(true)
     }
+    const fieldsWritable = useWritableFields(editingOrganization ? 'OrganizationFacade$UpdateCommand' : 'OrganizationFacade$CreateCommand')
     const save = useMutation({
         mutationFn: (values: OrganizationFormValues) => {
             if (editingOrganization) {
@@ -123,9 +126,9 @@ export const OrganizationPage = () => {
             extra={(
                 <Space>
                     <Button onClick={() => {void query.refetch()}}>刷新</Button>
-                    <PermissionGuard permission="system:organization:manage">
+                    <ResourceGuard resourceKey="tianquan-jianshen.button.OrganizationPage.manage1">
                         <Button type="primary" onClick={openCreate}>新增组织</Button>
-                    </PermissionGuard>
+                    </ResourceGuard>
                 </Space>
             )}
         >
@@ -207,7 +210,7 @@ export const OrganizationPage = () => {
                 size="large"
             >
                 {editingOrganization || editorOpen ? (
-                    <Form form={editorForm} layout="vertical" onFinish={(values) => save.mutate(values)}>
+                    <Form disabled={!fieldsWritable} form={editorForm} layout="vertical" onFinish={(values) => fieldsWritable && save.mutate(values)}>
                         <Form.Item name="type" label="组织类型" rules={[{required: true}]}>
                             <Select options={organizationTypes} />
                         </Form.Item>
@@ -246,7 +249,7 @@ export const OrganizationPage = () => {
                             <Descriptions.Item label="状态">{selectedOrganization.status}</Descriptions.Item>
                             <Descriptions.Item label="版本">{selectedOrganization.version}</Descriptions.Item>
                         </Descriptions>
-                        <PermissionGuard permission="system:organization:manage">
+                        <ResourceGuard resourceKey="tianquan-jianshen.button.OrganizationPage.manage2">
                             <Space>
                                 {selectedOrganization.snapshotId === null && (
                                     <Button onClick={() => openEdit(selectedOrganization)}>编辑</Button>
@@ -262,7 +265,7 @@ export const OrganizationPage = () => {
                                     </Popconfirm>
                                 )}
                             </Space>
-                        </PermissionGuard>
+                        </ResourceGuard>
                     </Space>
                 ) : null}
             </Drawer>

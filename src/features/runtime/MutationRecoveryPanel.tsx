@@ -1,4 +1,4 @@
-import { PermissionGuard } from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {ResourceGuard} from '../../permissions/ResourceGuard'
 import { Button, Card, Popconfirm, Select, Table, Tag, Typography } from 'antd'
 import type { MutationView } from './runtime.api'
 
@@ -29,11 +29,11 @@ export const MutationRecoveryPanel = ({ mutations, status, retrying, onStatusCha
         { title: 'Updated At', dataIndex: 'updatedAt' },
         {
           title: '操作', render: (_value, row) => row.status === 'FAILED' && (
-            <PermissionGuard permission="system:authorization-runtime:operate">
+            <ResourceGuard resourceKey="tianquan-jianshen.button.MutationRecoveryPanel.operate1">
               <Popconfirm title={`再次读取后重试 Mutation ${row.mutationId}？`} onConfirm={() => onRetry(row.mutationId)}>
                 <Button size="small" loading={retrying} aria-label={`重试 ${row.mutationId}`}>重试</Button>
               </Popconfirm>
-            </PermissionGuard>
+            </ResourceGuard>
           ),
         },
       ]}

@@ -1,3 +1,4 @@
+import {useWritableFields} from '../../permissions/FieldCatalog'
 import { Button, Checkbox, Form, Input, InputNumber, Modal, Select } from 'antd'
 import type { ManagementPolicyView, PolicyScope, PolicySubject, SaveManagementPolicyCommand } from './managementPolicy.api'
 
@@ -58,13 +59,15 @@ const values = (policy: ManagementPolicyView | null): Partial<PolicyForm> => ({
   requireAllAffiliationsInScope: policy?.restrictions.requireAllAffiliationsInScope ?? true,
 })
 
-export const ManagementPolicyEditor = ({ open, policy, saving, onCancel, onSave }: ManagementPolicyEditorProps) => (
+export const ManagementPolicyEditor = ({ open, policy, saving, onCancel, onSave }: ManagementPolicyEditorProps) => {
+  const fieldsWritable = useWritableFields('PolicyRequestDTO', 'ManagementPolicyRestrictionsDTO', 'ManagementPolicyScopeDTO', 'ManagementPolicySubjectDTO')
+  return (
   <Modal title={policy ? '编辑完整委托策略' : '新增完整委托策略'} open={open} footer={null} onCancel={onCancel} width={720} destroyOnHidden>
-    <Form<PolicyForm>
+    <Form<PolicyForm> disabled={!fieldsWritable}
       key={policy?.policyId ?? 'new'}
       layout="vertical"
       initialValues={values(policy)}
-      onFinish={(form) => onSave({
+      onFinish={(form) => fieldsWritable && onSave({
         policyCode: form.policyCode,
         name: form.name,
         validFrom: new Date(form.validFrom).toISOString(),
@@ -102,4 +105,5 @@ export const ManagementPolicyEditor = ({ open, policy, saving, onCancel, onSave 
       <Button type="primary" htmlType="submit" loading={saving}>完整保存策略</Button>
     </Form>
   </Modal>
-)
+  )
+}

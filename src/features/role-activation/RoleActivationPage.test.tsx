@@ -1,4 +1,6 @@
-import {type Rbac3Client, Rbac3Provider, Rbac3RequestError} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+vi.mock('../../permissions/FieldCatalog', () => ({useWritableFields: () => true, useWritableFieldKeys: () => true}))
+import {TestAuthorizationProvider, createAuthorizationFixtureClient} from '../../test/authorization'
+import {type Rbac3Client, Rbac3RequestError} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import type {PropsWithChildren} from 'react'
@@ -32,10 +34,10 @@ describe('role activation page', () => {
 
     await waitFor(() => expect(replaceActiveRoles).toHaveBeenCalledWith({
         roleIds: ['11', '12'], expectedAuthVersion: 2,
-    }))
+    }, expect.any(AbortSignal)))
   })
 
-  it('uses OIDC step-up without a password and resumes one same-version role intent', async () => {
+  it('requests reauthentication without storing or replaying a role mutation', async () => {
     const stepUpRequired = new Rbac3RequestError({
       status: 401,
       code: 'STEP_UP_REQUIRED',
@@ -52,7 +54,7 @@ describe('role activation page', () => {
         activationRequired: false,
         snapshotChecksum: 'sum',
       })
-    const stepUp = vi.spyOn(gatewayAuth, 'stepUp').mockImplementation(() => {})
+    const stepUp = vi.spyOn(gatewayAuth, 'login').mockImplementation(() => {})
     const first = render(<RoleActivationPage />, {wrapper: wrapper(replaceActiveRoles)})
 
     await waitFor(() => expect(screen.getByText('订单管理员')).toBeInTheDocument())
@@ -60,20 +62,16 @@ describe('role activation page', () => {
     await waitFor(() => expect(screen.getByText('关键角色需要强认证')).toBeInTheDocument())
 
     expect(screen.queryByLabelText('Current Password')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', {name: '确认强认证并激活'}))
+    fireEvent.click(screen.getByRole('button', {name: '重新认证'}))
 
-    await waitFor(() => expect(stepUp).toHaveBeenCalledWith())
-    expect(JSON.parse(window.sessionStorage.getItem(STEP_UP_INTENT_KEY) ?? 'null'))
-      .toEqual({roleIds: ['11'], expectedAuthVersion: 2})
+    await waitFor(() => expect(stepUp).toHaveBeenCalledWith(undefined, {reauthenticate: true}))
+    expect(window.sessionStorage.getItem(STEP_UP_INTENT_KEY)).toBeNull()
     first.unmount()
 
     render(<RoleActivationPage />, {wrapper: wrapper(replaceActiveRoles)})
 
-    await waitFor(() => expect(replaceActiveRoles).toHaveBeenCalledTimes(2))
-    expect(replaceActiveRoles).toHaveBeenLastCalledWith({
-      roleIds: ['11'],
-      expectedAuthVersion: 2,
-    })
+    await screen.findByText('订单管理员')
+    expect(replaceActiveRoles).toHaveBeenCalledTimes(1)
     expect(window.sessionStorage.getItem(STEP_UP_INTENT_KEY)).toBeNull()
   })
 })
@@ -119,17 +117,7 @@ const wrapper = (replaceActiveRoles: Rbac3Client['replaceActiveRoles']) => ({chi
       policyVersion: 3,
     snapshotChecksum: 'old',
   }
-  const sdk = {
-    getActivationCandidates: async () => candidates,
-    getActiveRoles: async () => activeRoles,
-    replaceActiveRoles,
-        getAbout: async () => ({
-        user: {id: '7', tenantId: '9', identitySub: 'mario', status: 'ACTIVE'},
-        permissions: ['system:role-activation:use'],
-        fieldPolicies: {}, activeRoleContexts: [], apps: [], menus: [], routes: [], actions: [],
-        defaultApplicationCode: null, defaultRoute: null, authVersion: 2, policyVersion: 3,
-    }),
-  } as unknown as Rbac3Client
+  const sdk = createAuthorizationFixtureClient({subject:'mario',tenantId:'9',permissionCodes:['system:role-activation:use'],authVersion:2,policyVersion:3}, {getActivationCandidates: async () => candidates,getActiveRoles: async () => activeRoles,replaceActiveRoles}) as unknown as Rbac3Client
   const api: FeatureApiClient = {
     request: async <T,>(path: string) => (
       path.endsWith('/role-activation-candidates') ? candidates : activeRoles
@@ -137,9 +125,9 @@ const wrapper = (replaceActiveRoles: Rbac3Client['replaceActiveRoles']) => ({chi
   }
   return (
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <Rbac3Provider client={sdk}>
+        <TestAuthorizationProvider client={sdk}>
         <FeatureApiProvider client={api}>{children}</FeatureApiProvider>
-      </Rbac3Provider>
+      </TestAuthorizationProvider>
     </QueryClientProvider>
   )
 }

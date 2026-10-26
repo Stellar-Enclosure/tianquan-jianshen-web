@@ -1,4 +1,4 @@
-import {type Rbac3AboutView, type Rbac3Client, Rbac3Provider} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {TestAuthorizationProvider, createAuthorizationFixtureClient, permissionSnapshotFixture} from '../test/authorization'
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {MemoryRouter} from 'react-router-dom'
@@ -7,24 +7,8 @@ import {type FeatureApiClient, FeatureApiProvider} from '../features/shared/Feat
 import {ApplicationRouter} from './router'
 import {applicationRouteDescriptors, localResourceRegistry, resolveApplicationLanding} from './navigation'
 
-const about = (permissions: readonly string[], resourceCodes?: readonly string[]): Rbac3AboutView => ({
-  user: { subject: 'mario', tenantId: '9', status: 'ACTIVE' },
-  currentApplicationCode: 'tianquan-jianshen-admin',
-  activeRoles: [],
-  permissions,
-  resourceCodes: resourceCodes ?? localResourceRegistry.definitions
-    .filter((definition) => definition.suggestedPermissionCode !== null
-      && definition.suggestedPermissionCode !== undefined
-      && permissions.includes(definition.suggestedPermissionCode))
-    .map((definition) => definition.code),
-  fieldPolicies: {},
-  landingRouteCode: null,
-  authVersion: 1,
-  policyVersion: 3,
-})
-
-const wrapper = (permissions: readonly string[], path: string, resourceCodes?: readonly string[]) => ({ children }: { readonly children: React.ReactNode }) => {
-    const sdk = {getAbout: async () => about(permissions, resourceCodes)} as unknown as Rbac3Client
+const wrapper = (permissions: readonly string[], path: string) => ({ children }: { readonly children: React.ReactNode }) => {
+    const sdk = createAuthorizationFixtureClient({subject: 'mario', tenantId: '9', permissionCodes: permissions})
   const feature: FeatureApiClient = { request: async <T,>(requestPath: string) => {
     if (requestPath === '/api/tianquan-jianshen/v1/iam/organizations') {
       return [{
@@ -38,6 +22,7 @@ const wrapper = (permissions: readonly string[], path: string, resourceCodes?: r
         orgUnitId: '1001', status: 'ACTIVE',
       }] as T
     }
+    if (requestPath.endsWith('/roles')) return [] as T
     if (requestPath.endsWith('/resources')) {
       return {
         roleId: '301', applicationId: '71', roleVersion: 1,
@@ -47,9 +32,9 @@ const wrapper = (permissions: readonly string[], path: string, resourceCodes?: r
     }
     return ({definition: {status: 'ACCEPTED', warnings: []}, providerLease: {state: 'ACTIVE'}, gatewayRelease: {status: 'ROUTABLE'}}) as T
   } }
-    return <QueryClientProvider client={new QueryClient()}><Rbac3Provider client={sdk}><FeatureApiProvider
+    return <QueryClientProvider client={new QueryClient()}><TestAuthorizationProvider client={sdk}><FeatureApiProvider
         client={feature}><MemoryRouter
-        initialEntries={[path]}>{children}</MemoryRouter></FeatureApiProvider></Rbac3Provider></QueryClientProvider>
+        initialEntries={[path]}>{children}</MemoryRouter></FeatureApiProvider></TestAuthorizationProvider></QueryClientProvider>
 }
 
 describe('application router', () => {
@@ -104,12 +89,12 @@ describe('application router', () => {
   })
 
   it('chooses the stable first accessible local route when no default is usable', () => {
-    expect(resolveApplicationLanding(about(['system:runtime:read']))).toBe('/iam/overview')
+    expect(resolveApplicationLanding(permissionSnapshotFixture({permissionCodes: ['system:runtime:read']}), permissionSnapshotFixture({permissionCodes: ['system:runtime:read']}))).toBe('/iam/overview')
   })
 
   it('removes the RBAC tenant catalog route and browser resource definition', () => {
     expect(applicationRouteDescriptors.some((route) => route.path === '/iam/tenants')).toBe(false)
-    expect(localResourceRegistry.definitions.some((definition) => definition.code === 'iam.tenants')).toBe(false)
+    expect(localResourceRegistry.definitions.some((definition) => definition.key === 'tianquan-jianshen.page.tenants')).toBe(false)
   })
 
   it('does not expose a browser resource report or synchronization action', async () => {
@@ -118,30 +103,13 @@ describe('application router', () => {
     expect(screen.queryByRole('button', { name: /sync|report|上报|同步/i })).not.toBeInTheDocument()
   })
 
-  it('does not expose the removed role-permissions route', async () => {
-    render(<ApplicationRouter />, { wrapper: wrapper(['system:role:read'], '/iam/roles/2/permissions') })
-    await waitFor(() => expect(screen.queryByText('角色权限与影响分析')).not.toBeInTheDocument())
-  })
-
-  it('renders the authorized resource tree and selects the role parent for hidden details', async () => {
-    render(<ApplicationRouter />, { wrapper: wrapper(['system:role:read'], '/iam/roles') })
-    await waitFor(() => expect(screen.getByText('角色图谱')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', {name: '打开导航'}))
-    fireEvent.click(screen.getByText('IAM'))
-    fireEvent.click(screen.getByText('授权'))
-    expect(screen.getByText('角色')).toBeInTheDocument()
-    cleanup()
-
-    render(<ApplicationRouter />, {
-      wrapper: wrapper(['system:role:read', 'system:role-resource:read'], '/iam/roles/301/resources'),
-    })
-    await waitFor(() => expect(screen.getByRole('button', {name: '打开导航'})).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', {name: '打开导航'}))
-    await waitFor(() => expect(screen.getByText('角色').closest('.ant-menu-item')).toHaveClass('ant-menu-item-selected'))
+  it('exposes the explicit permission-grant route and removes the resource-grant route', () => {
+    expect(applicationRouteDescriptors.some(route => route.path === '/iam/roles/:roleId/permissions')).toBe(true)
+    expect(applicationRouteDescriptors.some(route => route.path === '/iam/roles/:roleId/resources')).toBe(false)
   })
 
   it('does not render an empty rail when the user has no visible route', async () => {
-    render(<ApplicationRouter />, {wrapper: wrapper([], '/iam/roles', [])})
+    render(<ApplicationRouter />, {wrapper: wrapper([], '/iam/roles')})
     await waitFor(() => expect(screen.getByText('无权访问此页面')).toBeInTheDocument())
     expect(screen.queryByRole('button', {name: '打开导航'})).not.toBeInTheDocument()
     expect(screen.queryByRole('navigation', {name: '主菜单'})).not.toBeInTheDocument()

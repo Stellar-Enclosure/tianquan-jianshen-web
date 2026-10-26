@@ -1,3 +1,4 @@
+vi.mock('../../permissions/FieldCatalog', () => ({useWritableFields: () => true, useWritableFieldKeys: () => true}))
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {describe, expect, it, vi} from 'vitest'
 import {ManagementPolicyEditor} from './ManagementPolicyEditor'

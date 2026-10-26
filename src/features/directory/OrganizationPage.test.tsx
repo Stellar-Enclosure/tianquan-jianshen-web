@@ -1,8 +1,10 @@
+vi.mock('../../permissions/FieldCatalog', () => ({useWritableFields: () => true, useWritableFieldKeys: () => true}))
+import {TestAuthorizationProvider, createAuthorizationFixtureClient} from '../../test/authorization'
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import type {PropsWithChildren, ReactNode} from 'react'
 import {MemoryRouter} from 'react-router-dom'
-import {type Rbac3Client, Rbac3Provider} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {type Rbac3Client} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {FeatureApiProvider, type FeatureApiClient} from '../shared/FeatureApi'
 import {OrganizationPage} from './OrganizationPage'
@@ -33,22 +35,15 @@ const manageWrapper = ({children}: PropsWithChildren) => createWrapper(children,
 ])
 
 const createWrapper = (children: ReactNode, permissions: readonly string[]) => {
-    const sdk = {
-        getAbout: async () => ({
-            user: {id: '7', tenantId: '42', identitySub: 'organization-test', status: 'ACTIVE'},
-            permissions,
-            fieldPolicies: {}, activeRoleContexts: [], apps: [], menus: [], routes: [], actions: [],
-            defaultApplicationCode: null, defaultRoute: null, authVersion: 1, policyVersion: 1,
-        }),
-    } as unknown as Rbac3Client
+    const sdk = createAuthorizationFixtureClient({subject:'organization-test',tenantId:'42',permissionCodes:permissions,authVersion:1,policyVersion:1}, {}) as unknown as Rbac3Client
     const api: FeatureApiClient = {request: state.request}
     return (
         <QueryClientProvider client={new QueryClient({defaultOptions: {queries: {retry: false}}})}>
-            <Rbac3Provider client={sdk}>
+            <TestAuthorizationProvider client={sdk}>
                 <FeatureApiProvider client={api}>
                     <MemoryRouter initialEntries={['/iam/organizations']}>{children}</MemoryRouter>
                 </FeatureApiProvider>
-            </Rbac3Provider>
+            </TestAuthorizationProvider>
         </QueryClientProvider>
     )
 }

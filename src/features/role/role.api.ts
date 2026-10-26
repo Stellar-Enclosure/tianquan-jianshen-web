@@ -1,3 +1,4 @@
+import {catalogScopeKey, isCatalogScope, type CatalogScope} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import type { FeatureApiClient } from '../shared/FeatureApi'
 
 export interface RoleView {
@@ -28,50 +29,19 @@ export interface RoleMutationResult {
   readonly propagationPending: boolean
 }
 
-export interface RoleResourceGrantNode {
-  readonly resourceId: string
-  readonly resourceCode: string
-  readonly name: string
-  readonly category: string
-  readonly technicalType: string
-  readonly parentCode: string | null
-  readonly status: string
-  readonly mappingStatus: string
-  readonly grantState: string
-  readonly grantable: boolean
-  readonly disabledReason: string | null
-  readonly linkedApis: readonly RoleResourceLinkedApi[]
-  readonly children: readonly RoleResourceGrantNode[]
-}
-
-export interface RoleResourceLinkedApi {
-  readonly resourceId: string
-  readonly resourceCode: string
-  readonly name: string
-  readonly method: string | null
-  readonly path: string | null
-}
-
-export interface RoleResourceGrantTreeView {
+export interface RolePermissionGrantView {
+  readonly target: CatalogScope
   readonly roleId: string
-  readonly applicationId: string
-  readonly roleVersion: number
-  readonly directResourceIds: readonly string[]
-  readonly derivedApiResourceIds: readonly string[]
-  readonly summary: {
-    readonly menuPageCount: number
-    readonly actionCount: number
-    readonly apiCount: number
-    readonly inheritedCount: number
-  }
-  readonly nodes: readonly RoleResourceGrantNode[]
+  readonly version: string
+  readonly catalogVersion: string
+  readonly permissions: readonly {permissionCode: string; validFrom: string; validTo: string | null}[]
 }
-
-export interface ReplaceRoleResourcesCommand {
-  readonly resourceIds: readonly string[]
-  readonly validFrom: string
+export interface ReplaceRolePermissionsCommand {
+  readonly target: CatalogScope
+  readonly permissionCodes: readonly string[]
+  readonly expectedVersion: string
+  readonly validFrom: string | null
   readonly validTo: string | null
-  readonly expectedRoleVersion: number
 }
 
 export interface CreateRoleCommand {
@@ -129,11 +99,12 @@ export const roleApi = (client: FeatureApiClient) => ({
   impact: (roleId: string) => client.request<RoleImpactView>(
     `/api/tianquan-jianshen/v1/iam/roles/${encodeURIComponent(roleId)}/impact-analysis`,
   ),
-  resources: (roleId: string) => client.request<RoleResourceGrantTreeView>(
-    `/api/tianquan-jianshen/v1/iam/roles/${encodeURIComponent(roleId)}/resources`,
-  ),
-  replaceResources: (roleId: string, command: ReplaceRoleResourcesCommand) => client.request(
-    `/api/tianquan-jianshen/v1/iam/roles/${encodeURIComponent(roleId)}/resources`,
-    { method: 'PUT', body: command },
-  ),
+  permissions: async (roleId: string, target: CatalogScope) => {
+    const value = await client.request<RolePermissionGrantView>(`/api/v1/roles/${encodeURIComponent(roleId)}/permissions`, {query: {...target}})
+    if (value.roleId !== roleId || !isCatalogScope(value.target) || catalogScopeKey(value.target) !== catalogScopeKey(target)) throw new Error('角色授予响应与当前范围不一致')
+    return value
+  },
+  replacePermissions: (roleId: string, command: ReplaceRolePermissionsCommand) => client.request<{
+    target: CatalogScope; roleId: string; version: string; policyVersion: string; permissionCodes: readonly string[]; addedCount: number; removedCount: number;
+  }>(`/api/v1/roles/${encodeURIComponent(roleId)}/permissions`, {method: 'PUT', body: command}),
 })
