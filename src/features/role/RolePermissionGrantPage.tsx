@@ -46,6 +46,7 @@ const RolePermissionsForScope = ({roleId, target}: {roleId: string; target: Cata
     return roles.replacePermissions(roleId, {target, permissionCodes: draft.codes, expectedVersion: draft.version, validFrom: from, validTo: to})
   }, onSuccess: async () => {setDraft(null); await queryClient.invalidateQueries({queryKey: key}); await refreshAuthorization()},
   onError: async error => {if ((error as {status?: number}).status === 409) await queryClient.invalidateQueries({queryKey: key})}})
+  const decisionId = (save.error as {decisionId?: unknown} | null)?.decisionId
   return <Space orientation="vertical" style={{width: '100%'}}>
     <Alert type="info" showIcon title="角色显式授予权限字符" description="资源只解释权限的使用位置，不作为授予记录。保存会替换当前范围下该角色的全部直接授予；空选择明确清空。" />
     <PageState loading={grants.isPending || definitions.isPending} error={grants.error ?? definitions.error} empty={!grants.data} onRetry={() => void grants.refetch()}>
@@ -64,7 +65,8 @@ const RolePermissionsForScope = ({roleId, target}: {roleId: string; target: Cata
       <Typography.Paragraph type="secondary">所选权限统一使用该有效期。开始：{from ?? '数据库提交时间'}；结束：{to ?? '不设到期'}。原授予时段未编辑时保留其精确值。</Typography.Paragraph>
       {heterogeneous && <Alert type="warning" showIcon title="现有权限使用不同有效期" description={<Checkbox disabled={!fieldsWritable} checked={replacePeriods} onChange={event => {setReplacePeriods(event.target.checked); update(selected)}}>我确认用上述统一有效期替换全部所选授予时段</Checkbox>} />}
       {!current && <Alert type="warning" showIcon title="版本已变化，草稿未自动覆盖新版本" description="请保留需要的修改，再放弃草稿并重新读取当前授予。" />}
-      {save.error && <Alert type="error" showIcon title={save.error instanceof Error ? save.error.message : '保存角色权限失败'} />}
+      {save.error && <Alert type="error" showIcon title={save.error instanceof Error ? save.error.message : '保存角色权限失败'}
+        description={typeof decisionId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(decisionId) ? `决策编号: ${decisionId}` : undefined} />}
       <Space><ResourceGuard resourceKey="tianquan-jianshen.button.rolePermissions.save"><Button type="primary" disabled={!fieldsWritable || !draft || !current || grants.isFetching || (heterogeneous && !replacePeriods)} loading={save.isPending} onClick={() => save.mutate()}>保存权限字符</Button></ResourceGuard>
         <Button disabled={save.isPending} onClick={() => {setDraft(null); setValidFrom(undefined); setValidTo(undefined); setReplacePeriods(false); void grants.refetch()}}>放弃草稿并重新加载</Button></Space>
     </PageState>

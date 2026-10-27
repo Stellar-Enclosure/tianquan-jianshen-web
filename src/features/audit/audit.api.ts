@@ -27,6 +27,7 @@ export interface AuditFilter {
   readonly eventType?: string
   readonly outcome?: string
   readonly reasonCode?: string
+  readonly requestId?: string
   readonly traceId?: string
   readonly cursor?: string
   readonly limit: number
@@ -43,6 +44,7 @@ export const auditApi = (client: FeatureApiClient) => ({
         eventType: filter.eventType,
         outcome: filter.outcome,
         reasonCode: filter.reasonCode,
+        requestId: filter.requestId,
         traceId: filter.traceId,
         cursor: filter.cursor,
         limit: filter.limit,

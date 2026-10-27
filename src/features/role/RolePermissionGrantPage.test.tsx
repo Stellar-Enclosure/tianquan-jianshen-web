@@ -53,6 +53,17 @@ describe('explicit role permission grants', () => {
     expect(screen.getByRole('checkbox', {name: /order:read/})).toBeChecked()
     expect(test.refresh).not.toHaveBeenCalled()
   })
+  it('shows the opaque decision identifier when saving is denied', async () => {
+    const id = '12345678-1234-4234-8234-123456789abc'
+    const test = catalogWrapper((path, options) => {
+      if (options.method === 'PUT') throw Object.assign(new ApiError('denied', 403, 'AUTHORIZATION_DENIED'), {decisionId: id})
+      return defaultCatalogResponse(path, options)
+    })
+    render(<RolePermissionGrantPage roleId="301" />, test)
+    fireEvent.click(await screen.findByRole('checkbox', {name: /order:read/}))
+    fireEvent.click(screen.getByRole('button', {name: '保存权限字符'}))
+    expect(await screen.findByText(`决策编号: ${id}`)).toBeInTheDocument()
+  })
 })
 
 it('preserves an existing scheduled validity window when another permission is selected', async () => {

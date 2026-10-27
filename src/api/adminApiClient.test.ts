@@ -16,4 +16,12 @@ describe('RBAC admin error envelopes', () => {
     expect(classifyApiError(error).type).toBe(type)
     expect(classifyApiError(error).title).not.toBe('未知错误')
   })
+
+  it('retains the decision identifier returned with an authorization denial', async () => {
+    const id = '12345678-1234-4234-8234-123456789abc'
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({code: 'AUTHORIZATION_DENIED'}),
+      {status: 403, headers: {'X-Permission-Decision-Id': id}}))
+    const error = await createAdminApiClients('', fetcher).featureClient.request('/api/v1/example').catch(value => value)
+    expect(error).toMatchObject({status: 403, code: 'AUTHORIZATION_DENIED', decisionId: id})
+  })
 })
