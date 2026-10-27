@@ -18,18 +18,17 @@ jobs:
       PERMISSION_OUTPUT_ROOT: ${{ github.workspace }}/permission-temp/permission-results
       PERMISSION_CONTRACT_ARTIFACT_FILE: ${{ github.workspace }}/permission-temp/permission-contract.jar
       PERMISSION_CONTRACT_ARTIFACT_URL: ${{ vars.PERMISSION_CONTRACT_ARTIFACT_URL }}
+      PERMISSION_BACKEND_MANIFEST_URL: ${{ vars.PERMISSION_BACKEND_MANIFEST_URL }}
       PAC_SDK_DIR: ${{ github.workspace }}/workspace/web-sdk
       PAC_TOOLCHAIN_LOCK: ${{ github.workspace }}/workspace/tianquan-jianshen-web/permission-toolchain.lock.json
       PAC_CONTRACT_ARTIFACT: ${{ github.workspace }}/permission-temp/permission-contract.jar
+      PAC_BACKEND_MANIFEST: ${{ github.workspace }}/permission-temp/backend-manifest.json
       PAC_BUILD_ID: github-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v5
         with:
           path: workspace/tianquan-jianshen-web
           persist-credentials: false
-      - name: Verify permission delivery boundaries offline
-        working-directory: workspace/tianquan-jianshen-web
-        run: python3 scripts/permission-ci.test.py
       - name: Read the reviewed immutable toolchain commit
         id: pin
         working-directory: workspace/tianquan-jianshen-web
@@ -43,6 +42,9 @@ jobs:
           path: workspace/web-sdk
           token: ${{ secrets.STELLAR_ENCLOSURE_READ_TOKEN || github.token }}
           persist-credentials: false
+      - name: Verify permission delivery boundaries offline
+        working-directory: workspace/tianquan-jianshen-web
+        run: python3 scripts/permission-ci.test.py
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
@@ -66,6 +68,17 @@ jobs:
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
             --max-filesize 67108864 "$PERMISSION_CONTRACT_ARTIFACT_URL" --output "$PERMISSION_CONTRACT_ARTIFACT_FILE"
           python3 scripts/permission-ci.py prepare
+      - name: Fetch the pinned backend Manifest
+        working-directory: workspace/tianquan-jianshen-web
+        run: |
+          python3 - <<'CHECK'
+          import os, urllib.parse
+          url = urllib.parse.urlsplit(os.environ['PERMISSION_BACKEND_MANIFEST_URL'])
+          if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment:
+              raise SystemExit('A non-secret HTTPS backend Manifest URL is required')
+          CHECK
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            --max-filesize 16777216 "$PERMISSION_BACKEND_MANIFEST_URL" --output "$PAC_BACKEND_MANIFEST"
       - name: Verify actual npm artifacts, complete frontend build and unit tests
         run: |
           node "$PAC_SDK_DIR/scripts/verify-consumers.mjs" \

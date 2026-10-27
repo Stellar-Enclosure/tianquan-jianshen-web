@@ -4,6 +4,8 @@ import datetime
 import importlib.util
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -16,6 +18,43 @@ ci = adapter
 
 
 class PermissionDeliveryBoundaryTest(unittest.TestCase):
+    def test_bootstrap_reads_only_a_real_pinned_commit_and_rejects_duplicate_keys(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / 'permission-toolchain.lock.json'
+            path.write_text(json.dumps({'mode': 'PINNED_COMMIT', 'sdk': {'commit': 'a' * 40}}))
+            self.assertEqual(adapter._bootstrap_pin(root), 'a' * 40)
+            path.write_text('{"mode":"PINNED_COMMIT","mode":"LOCAL_UNCOMMITTED"}')
+            with self.assertRaises(ValueError):
+                adapter._bootstrap_pin(root)
+            path.write_text(json.dumps({'mode': 'LOCAL_UNCOMMITTED', 'sdk': {'commit': None}}))
+            with self.assertRaises(ValueError):
+                adapter._bootstrap_pin(root)
+
+    def test_wrapper_refuses_a_dirty_pinned_sdk_before_executing_its_adapter(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); app = root / 'app'; sdk = root / 'sdk'
+            (app / 'scripts').mkdir(parents=True); (sdk / 'scripts' / 'permissions').mkdir(parents=True)
+            wrapper = app / 'scripts' / 'permission-ci.py'
+            wrapper.write_bytes(Path(__file__).with_name('permission-ci.py').read_bytes())
+            shared = sdk / 'scripts' / 'permissions' / 'consumer-ci.py'
+            marker = root / 'executed'
+            shared.write_text(f"from pathlib import Path\nPath({str(marker)!r}).write_text('bad')\n")
+            subprocess.run(['git', 'init', '-q', str(sdk)], check=True)
+            subprocess.run(['git', '-C', str(sdk), 'add', 'scripts/permissions/consumer-ci.py'], check=True)
+            subprocess.run(['git', '-C', str(sdk), '-c', 'user.name=CI Test', '-c', 'user.email=ci@example.invalid',
+                            'commit', '-qm', 'fixture'], check=True)
+            commit = subprocess.check_output(['git', '-C', str(sdk), 'rev-parse', 'HEAD'], text=True).strip()
+            (app / 'permission-toolchain.lock.json').write_text(json.dumps({'mode': 'PINNED_COMMIT', 'sdk': {'commit': commit}}))
+            clean = subprocess.run([sys.executable, str(wrapper), 'validate'], env={**os.environ, 'PERMISSION_SDK_ROOT': str(sdk)}, capture_output=True)
+            self.assertEqual(clean.returncode, 0)
+            self.assertTrue(marker.exists())
+            marker.unlink()
+            shared.write_text(shared.read_text() + '# dirty\n')
+            result = subprocess.run([sys.executable, str(wrapper), 'validate'], env={**os.environ, 'PERMISSION_SDK_ROOT': str(sdk)}, capture_output=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertFalse(marker.exists())
+
     def test_json_rejects_duplicate_members_and_symlinks(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / 'input.json'
