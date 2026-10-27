@@ -5,6 +5,10 @@
     "applicationCode": "tianquan-jianshen"
   },
   "producerId": "tianquan-jianshen-web",
+  "backendReferences": {
+    "producerId": "tianquan-jianshen-java",
+    "manifestDigest": "1a916a4231bd811e28f097c6a6383f1ce9d720328c6ca50fbbc4c8f198a7dff0"
+  },
   "ownedKeyPrefixes": [
     "tianquan-jianshen.app.",
     "tianquan-jianshen.menu.",
@@ -20,7 +24,8 @@
       "entryPoints": [
         "src/permissions/permissions.ts",
         "src/permissions/resources.ts",
-        "src/permissions/fieldReferences.ts"
+        "src/permissions/fieldReferences.ts",
+        "src/features/role/rolePermissionResources.ts"
       ]
     }
   },

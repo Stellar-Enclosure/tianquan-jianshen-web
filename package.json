@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "predev": "node scripts/prepare-backend-references.mjs",
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit --pretty false",
+    "pretypecheck": "node scripts/prepare-backend-references.mjs",
     "test": "vitest run",
+    "pretest": "node scripts/prepare-backend-references.mjs",
     "verify:bundle": "node scripts/verify-browser-bundle.mjs",
     "verify:conformance": "node scripts/verify-tianquan-jianshen-conformance.mjs",
     "lint": "eslint .",

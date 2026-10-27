@@ -70,6 +70,7 @@ For local source verification, provide absolute reviewed paths. The current `per
 export PAC_SDK_DIR=/absolute/path/to/web-sdk
 export PAC_TOOLCHAIN_LOCK="$PWD/permission-toolchain.local.lock.json"
 export PAC_CONTRACT_ARTIFACT=/absolute/path/to/reviewed-permission-contract.jar
+export PAC_BACKEND_MANIFEST=/absolute/path/to/fixed-jianshen-backend-manifest.json
 npm ci --offline --ignore-scripts
 npm run typecheck
 npm test -- --run --testTimeout=15000
@@ -88,6 +89,15 @@ CI requires a real `permission-toolchain.lock.json` in `PINNED_COMMIT` mode, a c
 The normal GitHub/GitLab pipelines perform offline checks and package artifact evidence. Pull requests receive no registration credential. The separate protected delivery phase explicitly chooses `register` or `activate`; registration uses one stable operation ID, and pending/unknown outcomes remain exit code 6 and must be queried with that same ID. Registration does not grant roles or activate a version. Activation consumes the exact successful build plus fresh trusted deployment/readiness evidence and the complete producer selection with existing qualification IDs. The server independently rechecks scope, ownership, revisions and qualification. Keep credentials in protected owner-only files; do not place them in command arguments, manifests, reports or source.
 
 Local unit/build evidence does not prove PostgreSQL migrations, browser/SSO behavior, deployed artifact readiness, real CI runs, or remote registration/activation. Those require the separately prepared environment. None of these commands starts an application, database, container or browser.
+
+The role-permission declarations use named references generated from the backend FULL Manifest pinned by `backendReferences` in `permission-manifest.config.json`. The local path must contain that exact Manifest; a missing file, wrong producer/application or digest fails closed and removes the previous generated references. The currently recorded digest is a local 2026-10-26 artifact baseline, not proof of deployment. Before protected CI is enabled, review and pin the actual retained backend artifact, configure the non-secret HTTPS `PERMISSION_BACKEND_MANIFEST_URL`, and use the matching fixed SDK commit and contract. CI and local builds call the same generator. A backend release can be reused without rebuilding this frontend only after reference and wire compatibility checks.
+
+For another operation in the role-permission feature:
+
+1. Declare the backend permission definition and API/FIELD policies in the Java owner and build a FULL Manifest. Review its producer, application and digest before updating the single frontend pin.
+2. In `src/features/role/rolePermissionResources.ts`, import the generated named permission, API and field references. Add the permission to `rolePermissionReferences`, add each explicit FORM_FIELD/TABLE_FIELD/DETAIL_FIELD or CALLS use to `rolePermissionFieldReferences`, and add the frontend-owned button to `rolePermissionButtons`. Keep the DTO's writable-field group aligned with the fields actually used by the form.
+3. Implement the page action and API call in the existing feature files. The frontend field catalog filters field uses and still obtains the current runtime field policy; a CALLS reference is not an authorization grant.
+4. Run the local typecheck, tests and build above. The protected registration and activation steps remain separate; they review the Diff and do not grant any role.
 
 GitLab activation additionally requires protected `PERMISSION_DEPLOYMENT_JOB_NAME` (the exact name of a separate successful deployment job) and `PERMISSION_GITLAB_READ_TOKEN_FILE` (an absolute owner-only file containing a `read_api` token). Deployment evidence includes `gitlab: {projectId, pipelineId, jobId}` using decimal strings from the current project. The adapter reads that job and successful pipeline from the configured GitLab API, checks the current protected ref/commit and fresh readiness, and compares the original `permission-deployment.json` job artifact with the local proof. The API must share the `CI_SERVER_URL` HTTPS origin; artifact CDN redirects never receive the API token. These external variables and deployment jobs still require environment configuration and verification.
 

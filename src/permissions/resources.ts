@@ -1,4 +1,6 @@
 import {fieldReferences} from './fieldReferences'
+import {permissionSystemRolePermissionRead} from '../../.generated/permissions/backend-references'
+import {rolePermissionButtons, rolePermissionFieldReferences} from '../features/role/rolePermissionResources'
 import {defineResources, defineMessages} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 
 export const resources = defineResources([
@@ -317,7 +319,7 @@ export const resources = defineResources([
     "requirement": {
       "mode": "ALL",
       "codes": [
-        "system:role-permission:read",
+        permissionSystemRolePermissionRead,
         "system:permission-catalog:read"
       ]
     },
@@ -1022,7 +1024,7 @@ export const resources = defineResources([
     "requirement": {
       "mode": "ALL",
       "codes": [
-        "system:role-permission:read"
+        permissionSystemRolePermissionRead
       ]
     },
     "i18n": {
@@ -1187,23 +1189,7 @@ export const resources = defineResources([
       "labelKey": "tianquan-jianshen.button.catalog.approveExpansion"
     }
   },
-  {
-    "key": "tianquan-jianshen.button.rolePermissions.save",
-    "type": "BUTTON",
-    "target": {
-      "action": "rolePermissions.save"
-    },
-    "requirement": {
-      "mode": "ALL",
-      "codes": [
-        "system:role-permission:manage"
-      ]
-    },
-    "i18n": {
-      "pageCode": "tianquan-jianshen.web.permissions",
-      "labelKey": "tianquan-jianshen.button.rolePermissions.save"
-    }
-  },
+  ...rolePermissionButtons,
   {
     "key": "tianquan-jianshen.component.ConstraintPage.sod",
     "type": "COMPONENT",
@@ -1258,7 +1244,7 @@ export const resources = defineResources([
   }
 ] as const)
 
-export const resourceReferences = fieldReferences
+export const resourceReferences = [...fieldReferences, ...rolePermissionFieldReferences] as const
 
 export const messages = defineMessages([
   {

@@ -29,8 +29,6 @@ export const permissions = definePermissionReferences([
   "system:role-assignment:manage",
   "system:role-assignment:read",
   "system:role-inheritance:manage",
-  "system:role-permission:manage",
-  "system:role-permission:read",
   "system:role:create",
   "system:role:read",
   "system:role:update",

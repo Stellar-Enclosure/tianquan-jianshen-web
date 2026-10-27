@@ -1,4 +1,5 @@
 import {defineResourceReferences} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
+import {rolePermissionInputFields} from '../features/role/rolePermissionResources'
 
 export const fieldReferences = defineResourceReferences([
   {
@@ -35,26 +36,6 @@ export const fieldReferences = defineResourceReferences([
   },
   {
     "key": "tianquan-jianshen.field.authorization.grant.roleinheritance.domain.dto.InheritanceRequestDTO.juniorRoleId",
-    "usage": "FORM_FIELD"
-  },
-  {
-    "key": "tianquan-jianshen.field.authorization.grant.rolepermission.domain.dto.ReplaceRolePermissionsRequestDTO.expectedVersion",
-    "usage": "FORM_FIELD"
-  },
-  {
-    "key": "tianquan-jianshen.field.authorization.grant.rolepermission.domain.dto.ReplaceRolePermissionsRequestDTO.permissionCodes",
-    "usage": "FORM_FIELD"
-  },
-  {
-    "key": "tianquan-jianshen.field.authorization.grant.rolepermission.domain.dto.ReplaceRolePermissionsRequestDTO.target",
-    "usage": "FORM_FIELD"
-  },
-  {
-    "key": "tianquan-jianshen.field.authorization.grant.rolepermission.domain.dto.ReplaceRolePermissionsRequestDTO.validFrom",
-    "usage": "FORM_FIELD"
-  },
-  {
-    "key": "tianquan-jianshen.field.authorization.grant.rolepermission.domain.dto.ReplaceRolePermissionsRequestDTO.validTo",
     "usage": "FORM_FIELD"
   },
   {
@@ -697,13 +678,7 @@ export const inputFields = {
     "tianquan-jianshen.field.authorization.grant.roleinheritance.domain.dto.InheritanceRequestDTO.expectedRoleVersion",
     "tianquan-jianshen.field.authorization.grant.roleinheritance.domain.dto.InheritanceRequestDTO.juniorRoleId"
   ],
-  "ReplaceRolePermissionsRequestDTO": [
-    "tianquan-jianshen.field.authorization.grant.rolepermission.domain.dto.ReplaceRolePermissionsRequestDTO.expectedVersion",
-    "tianquan-jianshen.field.authorization.grant.rolepermission.domain.dto.ReplaceRolePermissionsRequestDTO.permissionCodes",
-    "tianquan-jianshen.field.authorization.grant.rolepermission.domain.dto.ReplaceRolePermissionsRequestDTO.target",
-    "tianquan-jianshen.field.authorization.grant.rolepermission.domain.dto.ReplaceRolePermissionsRequestDTO.validFrom",
-    "tianquan-jianshen.field.authorization.grant.rolepermission.domain.dto.ReplaceRolePermissionsRequestDTO.validTo"
-  ],
+  ...rolePermissionInputFields,
   "AssignRequestDTO": [
     "tianquan-jianshen.field.authorization.grant.userrole.domain.dto.AssignRequestDTO.assignmentType",
     "tianquan-jianshen.field.authorization.grant.userrole.domain.dto.AssignRequestDTO.expectedUserAuthVersion",
