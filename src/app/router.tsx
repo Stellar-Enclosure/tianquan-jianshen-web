@@ -1,5 +1,6 @@
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {Result} from 'antd'
+import {gatewayAuth} from '../features/auth/gatewayAuth'
 import {EnterpriseLayout, type EnterpriseLayoutConfig,} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {Navigate, Route, Routes} from 'react-router-dom'
 import type {PropsWithChildren} from 'react'
@@ -41,7 +42,10 @@ const AdminLayout = ({ children, embedded = false }: PropsWithChildren<{ readonl
     navigation: visibleNavigation(snapshot, binding),
     user: {
         name: about.user.subject,
-        menu: [],
+        menu: [
+            {key: 'local-logout', label: '退出鉴身', onClick: () => gatewayAuth.logout()},
+            {key: 'sso-logout', label: '退出统一身份', onClick: () => gatewayAuth.logout(true)},
+        ],
     },
     footer: { version },
   }

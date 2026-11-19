@@ -14,9 +14,18 @@ React console for Jianshen IAM governance and RBAC3 authorization management. Al
 
 [Navigation](src/app/navigation.ts) combines the [governance](src/features/governance.routes.tsx), [authorization](src/features/authorization.routes.tsx) and [runtime](src/features/runtime.routes.tsx) descriptors. [Routing](src/app/router.tsx) filters navigation and guards pages against the authorization state. The usual role-management entry is `/iam/roles`; the actual landing route is selected from the current user's allowed local routes.
 
-The console consumes [tianquan-jianshen-service](https://github.com/Stellar-Enclosure/tianquan-jianshen-service), the shared Web UI package and the [Jianshen React SDK](https://github.com/Stellar-Enclosure/web-sdk/tree/main/packages/stellar-enclosure-tianquan-jianshen-react-sdk). Browser authentication uses Edge registration `edge-jianshen`; the SDK supplies typed authorization, activation and UI guards while the server independently enforces decisions. Shoubing user/password/client/key administration belongs to [tianquan-shoubing-web](https://github.com/Stellar-Enclosure/tianquan-shoubing-web).
+The console consumes [tianquan-jianshen-service](https://github.com/Stellar-Enclosure/tianquan-jianshen-service), the shared Web UI package and the [Jianshen React SDK](https://github.com/Stellar-Enclosure/web-sdk/tree/main/packages/stellar-enclosure-tianquan-jianshen-react-sdk). The console uses a PUBLIC OAuth client with S256 PKCE and sends a verified Resource Bearer directly to the Jianshen API. The SDK supplies typed authorization, activation and UI guards while the server independently enforces decisions. Shoubing user/password/client/key administration belongs to [tianquan-shoubing-web](https://github.com/Stellar-Enclosure/tianquan-shoubing-web).
 
 This is a static SPA that can run standalone or as a portal child. Resource reporting and bundle/conformance checks are available in [package.json](package.json); browser E2E commands are separate from ordinary build/test commands.
+
+
+## HTTPS application and Resource registration
+
+Set `VITE_TIANQUAN_JIANSHEN_OAUTH_CONFIG` at build time to the approved public registration JSON. It contains `webOrigin`, `resource`, `apiBaseUrl`, `activeResource`, and `registrations`. Each registration binds its `id`, `clientId`, `tenantId`, HTTPS `issuer`, authorization and token endpoints, JWKS URL, exact scopes, `browserBound` flag, Resource and API base. Never put credentials in this configuration. Missing configuration leaves business access unavailable.
+
+Register the exact `<webOrigin><base>/auth/oidc/callback/<id>` redirect and, for an approved same-origin Portal opener, the optional `<webOrigin><base>/auth/oidc/popup/<id>` redirect. Serve both callbacks and the explicit `/auth/standalone/<id>` entry with the static SPA fallback. Set `VITE_BASE_PATH` to the deployed prefix and `VITE_PERMISSION_NAMESPACE` and `VITE_PERMISSION_ENVIRONMENT` to the expected catalog scope. Configure the issuer and API to allow this browser origin where cross-origin requests are needed. The app sends business requests without cookies and keeps access authorization in memory.
+
+Exiting Jianshen clears the local grant, permissions and pending requests. Exiting the unified identity session also navigates to the configured issuer logout. For role activation that requires step-up, use the approved standalone Jianshen page for that tenant and submit the role selection after reauthentication.
 
 ## Build and test
 
@@ -103,4 +112,4 @@ GitLab activation additionally requires protected `PERMISSION_DEPLOYMENT_JOB_NAM
 
 ### Existing-environment acceptance
 
-Use [the external permission acceptance harness](docs/permission-external-acceptance.md) after preparing the isolated HTTPS dataset and private browser state. `npm run e2e:external -- --list` only collects eight scenarios; execution requires an explicit runtime flag and never starts the project.
+Run `npm run e2e` with the pinned build inputs to test PKCE, bearer-only API requests, and diagnostics using an isolated Chromium fixture. The [historical external permission harness](docs/permission-external-acceptance.md) uses Edge browser state. Collect native platform acceptance against the PUBLIC OAuth deployment and its approved Resource origins.

@@ -54,7 +54,7 @@ describe('role activation page', () => {
         activationRequired: false,
         snapshotChecksum: 'sum',
       })
-    const stepUp = vi.spyOn(gatewayAuth, 'login').mockImplementation(() => {})
+    const stepUp = vi.spyOn(gatewayAuth, 'login').mockResolvedValue(false)
     const first = render(<RoleActivationPage />, {wrapper: wrapper(replaceActiveRoles)})
 
     await waitFor(() => expect(screen.getByText('订单管理员')).toBeInTheDocument())
@@ -64,7 +64,7 @@ describe('role activation page', () => {
     expect(screen.queryByLabelText('Current Password')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', {name: '重新认证'}))
 
-    await waitFor(() => expect(stepUp).toHaveBeenCalledWith(undefined, {reauthenticate: true}))
+    await waitFor(() => expect(stepUp).toHaveBeenCalledWith('/', {reauthenticate: true}))
     expect(window.sessionStorage.getItem(STEP_UP_INTENT_KEY)).toBeNull()
     first.unmount()
 

@@ -1,18 +1,15 @@
 import {expect, test} from '@playwright/test'
+import {appBase, installAppFixture} from './fixtures/publicOAuth'
 
-test('contract fixture: unauthenticated authorization shows the OIDC login entry', async ({page}) => {
-    let identityCount = 0
-    await page.route('**/apps/edge-jianshen/auth/identity', async (route) => {
-        identityCount += 1
-        await route.fulfill({status: 401,
-            json: {
-                error: {code: 'AUTHENTICATION_REQUIRED', message: 'login required', retryable: false, details: []},
-                meta: {requestId: 'e2e', traceId: 'e2e', timestamp: new Date().toISOString()}
-            }
-        })
+test('anonymous navigation makes no authorization or business API request', async ({page}) => {
+  const unexpected: string[] = []
+  page.on('request', request => {
+    const {pathname} = new URL(request.url())
+    if (pathname.startsWith('/api/') || pathname.startsWith('/apps/')) unexpected.push(pathname)
   })
-  await page.goto('/')
-    await expect(page.getByRole('button', {name: '使用统一身份登录'})).toBeVisible()
-    await expect(page.getByRole('textbox')).toHaveCount(0)
-    expect(identityCount).toBe(1)
+  await installAppFixture(page)
+  await page.goto(appBase + 'iam/diagnostics/runtime')
+  await expect(page.getByRole('button', {name: '使用统一身份登录'})).toBeVisible()
+  await expect(page.getByRole('textbox')).toHaveCount(0)
+  expect(unexpected).toEqual([])
 })

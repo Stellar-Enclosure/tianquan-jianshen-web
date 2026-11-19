@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import 'antd/dist/reset.css'
 import { AdminThemeProvider, injectTokens, initI18n, I18nProvider } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import { App } from './app/App'
+import { gatewayAuth } from './features/auth/gatewayAuth'
 
 injectTokens()
 
@@ -39,6 +40,7 @@ const mount = (): void => {
 const unmount = (): void => {
   root?.unmount()
   root = undefined
+  gatewayAuth.logout()
 }
 
 if (runtimeWindow.__POWERED_BY_WUJIE__) {

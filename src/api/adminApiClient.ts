@@ -1,19 +1,39 @@
 import {Rbac3ApiClient} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
-import {ApiError, createGatewayAuthClient, createHttpClient, type GatewayAuthClient} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {ApiError, createHttpClient} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import type {FeatureApiClient, FeatureApiRequest} from '../features/shared/FeatureApi'
-import {gatewayAuth, notifyAuthorizationFailure} from '../features/auth/gatewayAuth'
+import {gatewayAuth, notifyAuthorizationFailure, type JianshenAuth} from '../features/auth/gatewayAuth'
 
 export interface AdminApiClients {
-  readonly authClient: GatewayAuthClient
+  readonly authClient: Pick<JianshenAuth, 'identity' | 'authority' | 'context'>
   readonly rbac3Client: Rbac3ApiClient
   readonly featureClient: FeatureApiClient
 }
 
-export const createAdminApiClients = (basePath = '', fetcher: typeof globalThis.fetch = (...args) => globalThis.fetch(...args)): AdminApiClients => {
-  const authClient = createGatewayAuthClient({baseUrl: basePath, appAlias: import.meta.env.VITE_OAUTH_APP_ALIAS ?? 'edge-jianshen',
-    context: gatewayAuth.context, fetch: fetcher})
-  const transport = createHttpClient({baseUrl: authClient.applicationBaseUrl, credentials: 'include', context: authClient.context,
-    getCsrf: signal => authClient.csrf(signal), fetch: fetcher, onAuthError: notifyAuthorizationFailure})
+export const createAdminApiClients = (
+  authClient: AdminApiClients['authClient'] = gatewayAuth,
+  fetcher: typeof globalThis.fetch = (...args) => globalThis.fetch(...args),
+): AdminApiClients => {
+  const transport = {
+    async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+      const authority = authClient.authority()
+      const roleActivation = path === '/api/tianquan-jianshen/v1/auth/role-activations' && init.method === 'PUT'
+      const fetchWithStepUp: typeof fetch = async (input, options) => {
+        const response = await fetcher(input, options)
+        if (response.status === 401) {
+          const body = await response.clone().json().catch(() => undefined)
+          options?.signal?.throwIfAborted()
+          // The role API uses 401 for additional authentication with a still-valid grant.
+          if (body?.error?.code === 'STEP_UP_REQUIRED' || body?.status === 'STEP_UP_REQUIRED' || body?.code === 'STEP_UP_REQUIRED') {
+            void response.body?.cancel()
+            throw new ApiError('角色激活需要重新认证', 401, 'STEP_UP_REQUIRED', {retryable: false})
+          }
+        }
+        return response
+      }
+      return createHttpClient({baseUrl: authority.apiBaseUrl, authority,
+        fetch: roleActivation ? fetchWithStepUp : fetcher, onAuthError: notifyAuthorizationFailure}).request<T>(path, init)
+    },
+  }
   const request = async <T,>(path: string, options: FeatureApiRequest = {}): Promise<T> => {
     const parameters = new URLSearchParams()
     Object.entries(options.query ?? {}).forEach(([key, value]) => {

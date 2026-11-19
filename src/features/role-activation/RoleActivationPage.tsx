@@ -68,15 +68,15 @@ export const RoleActivationPage = () => {
       setSubmitError(error)
     }
   }
-  const confirmStepUp = () => {
+  const confirmStepUp = async () => {
     if (stepUpRequest === null) return
     setStepUpSubmitting(true)
     setStepUpError(null)
     try {
-      gatewayAuth.login(undefined, {reauthenticate: true})
-      setStepUpSubmitting(false)
+      await gatewayAuth.login('/', {reauthenticate: true})
     } catch (error) {
       setStepUpError(error)
+    } finally {
       setStepUpSubmitting(false)
     }
   }
@@ -85,6 +85,7 @@ export const RoleActivationPage = () => {
     setStepUpRequest(null)
     setStepUpError(null)
   }
+  const standaloneUrl = stepUpRequest ? gatewayAuth.standaloneUrl(true) : undefined
   return (
     <>
         <Card title="激活当前用户角色">
@@ -145,15 +146,19 @@ export const RoleActivationPage = () => {
             type="primary"
             loading={stepUpSubmitting}
             disabled={stepUpSubmitting}
-            onClick={() => void confirmStepUp()}
+            href={standaloneUrl}
+            target={standaloneUrl ? "_blank" : undefined}
+            rel={standaloneUrl ? "noopener" : undefined}
+            onClick={standaloneUrl ? undefined : () => void confirmStepUp()}
           >
-            重新认证
+            {standaloneUrl ? '打开独立鉴身入口' : '重新认证'}
           </Button>,
         ]}
       >
         <Typography.Paragraph type="secondary">
           所选角色包含高风险或关键权限。继续后将跳转到统一身份平台重新认证，返回后请重新选择角色并确认提交；不会自动重放本次授权变更。重新认证不代表已满足服务端要求的认证强度。
         </Typography.Paragraph>
+        {standaloneUrl && <Typography.Paragraph>请在独立鉴身入口完成强认证，再重新选择和提交角色。</Typography.Paragraph>}
         {stepUpError !== null && (
           <Alert
             type="error"

@@ -30,16 +30,6 @@ export default defineConfig(async ({mode, command}) => {
       host: '127.0.0.1',
       port: 18131,
       strictPort: true,
-      proxy: {
-        '/apps': {
-          target: process.env.TIANQUAN_JIANSHEN_AUTH_PROXY ?? 'http://127.0.0.1:18180',
-          changeOrigin: false,
-        },
-        '/api': {
-          target: process.env.TIANQUAN_JIANSHEN_ADMIN_PROXY ?? 'http://127.0.0.1:18180',
-          changeOrigin: true,
-        },
-      },
     },
     build: {
       sourcemap: false,
