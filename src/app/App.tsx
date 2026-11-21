@@ -4,7 +4,7 @@ import {QueryClientProvider} from '@tanstack/react-query'
 import {BrowserRouter, Link, Route, Routes, useNavigate, useParams, useSearchParams} from 'react-router-dom'
 import {Result} from 'antd'
 import {useEffect, useState} from 'react'
-import {AppErrorBoundary} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {AppErrorBoundary, type WorkbenchHost} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {createAdminApiClients} from '../api/adminApiClient'
 import {gatewayAuth, LOGIN_CALLBACK, POPUP_CALLBACK, STANDALONE_LOGIN} from '../features/auth/gatewayAuth'
 import {AuthenticationShell} from '../features/auth/AuthenticationShell'
@@ -40,29 +40,64 @@ function StandaloneLogin() {
   return <LoginPage startAuthorization={() => gatewayAuth.loginStandalone(registrationId, params.get('reauthenticate') === '1')} />
 }
 
-export const App = ({embedded = false}: {readonly embedded?: boolean}) => (
-  <BrowserRouter basename={import.meta.env.BASE_URL}>
-    <AppErrorBoundary onError={(error, info) => {
-      console.error('[Tianquan-Jianshen] Unhandled error:', error, info.componentStack)
-    }}>
-      <Routes>
-        <Route caseSensitive path={LOGIN_CALLBACK} element={<OAuthCallback />} />
-        <Route caseSensitive path={POPUP_CALLBACK} element={<OAuthCallback popup />} />
-        <Route caseSensitive path={STANDALONE_LOGIN} element={<StandaloneLogin />} />
-        <Route path="*" element={
-          <QueryClientProvider client={queryClient}>
-            <CurrentAuthorizationProvider clients={clients}>
-              <FeatureApiProvider client={clients.featureClient}>
-                <FieldCatalogProvider>
-                  <AuthenticationShell>
-                    <ApplicationRouter embedded={embedded} />
-                  </AuthenticationShell>
-                </FieldCatalogProvider>
-              </FeatureApiProvider>
-            </CurrentAuthorizationProvider>
-          </QueryClientProvider>
-        } />
-      </Routes>
-    </AppErrorBoundary>
-  </BrowserRouter>
-)
+type WujieWorkbenchWindow = Window & {
+  $wujie?: { props?: { embedded?: boolean; workbenchHost?: WorkbenchHost } }
+}
+
+export const App = ({
+  embedded = false,
+  workbenchHost,
+}: {
+  readonly embedded?: boolean
+  readonly workbenchHost?: WorkbenchHost
+}) => {
+  const resolvedHost =
+    workbenchHost ?? (window as WujieWorkbenchWindow).$wujie?.props?.workbenchHost
+
+  if (resolvedHost) {
+    return (
+      <AppErrorBoundary onError={(error, info) => {
+        console.error('[Tianquan-Jianshen] Unhandled error:', error, info.componentStack)
+      }}>
+        <QueryClientProvider client={queryClient}>
+          <CurrentAuthorizationProvider clients={clients}>
+            <FeatureApiProvider client={clients.featureClient}>
+              <FieldCatalogProvider>
+                <AuthenticationShell>
+                  <ApplicationRouter embedded workbenchHost={resolvedHost} />
+                </AuthenticationShell>
+              </FieldCatalogProvider>
+            </FeatureApiProvider>
+          </CurrentAuthorizationProvider>
+        </QueryClientProvider>
+      </AppErrorBoundary>
+    )
+  }
+
+  return (
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
+      <AppErrorBoundary onError={(error, info) => {
+        console.error('[Tianquan-Jianshen] Unhandled error:', error, info.componentStack)
+      }}>
+        <Routes>
+          <Route caseSensitive path={LOGIN_CALLBACK} element={<OAuthCallback />} />
+          <Route caseSensitive path={POPUP_CALLBACK} element={<OAuthCallback popup />} />
+          <Route caseSensitive path={STANDALONE_LOGIN} element={<StandaloneLogin />} />
+          <Route path="*" element={
+            <QueryClientProvider client={queryClient}>
+              <CurrentAuthorizationProvider clients={clients}>
+                <FeatureApiProvider client={clients.featureClient}>
+                  <FieldCatalogProvider>
+                    <AuthenticationShell>
+                      <ApplicationRouter embedded={embedded} />
+                    </AuthenticationShell>
+                  </FieldCatalogProvider>
+                </FeatureApiProvider>
+              </CurrentAuthorizationProvider>
+            </QueryClientProvider>
+          } />
+        </Routes>
+      </AppErrorBoundary>
+    </BrowserRouter>
+  )
+}

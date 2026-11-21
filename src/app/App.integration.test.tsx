@@ -3,6 +3,7 @@ import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {MemoryRouter} from 'react-router-dom'
 import {describe, expect, it, vi} from 'vitest'
+import type {WorkbenchHost, WorkbenchPort} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {type FeatureApiClient, FeatureApiProvider} from '../features/shared/FeatureApi'
 import {ApplicationRouter} from './router'
 import {applicationRouteDescriptors, localResourceRegistry, resolveApplicationLanding} from './navigation'
@@ -113,5 +114,76 @@ describe('application router', () => {
     await waitFor(() => expect(screen.getByText('无权访问此页面')).toBeInTheDocument())
     expect(screen.queryByRole('button', {name: '打开导航'})).not.toBeInTheDocument()
     expect(screen.queryByRole('navigation', {name: '主菜单'})).not.toBeInTheDocument()
+  })
+
+  it('binds workbenchHost in workbench-1 mode, omits app chrome, and reports authorized catalog', async () => {
+    const attachedPorts: WorkbenchPort[] = []
+    const catalogs: Array<{ status: string; patterns: string[] }> = []
+    const workbenchHost: WorkbenchHost = {
+      attach: (port) => {
+        attachedPorts.push(port)
+        return { ok: true }
+      },
+      reportCatalog: (update) => {
+        catalogs.push({
+          status: update.status,
+          patterns: update.pages.map((page) => page.pattern),
+        })
+        return { ok: true }
+      },
+      requestNavigation: () => ({ ok: true }),
+    }
+
+    const sdk = createAuthorizationFixtureClient({
+      subject: 'mario',
+      tenantId: '9',
+      permissionCodes: ['system:runtime:read', 'system:organization:read'],
+    })
+    const feature: FeatureApiClient = {
+      request: async <T,>(requestPath: string) => {
+        if (requestPath === '/api/tianquan-jianshen/v1/iam/organizations') {
+          return [{
+            orgUnitId: '1001',
+            snapshotId: null,
+            type: 'DEPARTMENT',
+            code: 'hq',
+            name: '总部',
+            parentId: null,
+            path: 'hq',
+            depth: 0,
+            status: 'ACTIVE',
+          }] as T
+        }
+        return ({definition: {status: 'ACCEPTED', warnings: []}, providerLease: {state: 'ACTIVE'}, gatewayRelease: {status: 'ROUTABLE'}}) as T
+      },
+    }
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <TestAuthorizationProvider client={sdk}>
+          <FeatureApiProvider client={feature}>
+            <ApplicationRouter embedded workbenchHost={workbenchHost} />
+          </FeatureApiProvider>
+        </TestAuthorizationProvider>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => expect(attachedPorts).toHaveLength(1))
+    await waitFor(() => expect(catalogs.some((entry) => entry.status === 'ready')).toBe(true))
+    const readyCatalog = catalogs.find((entry) => entry.status === 'ready')!
+    expect(readyCatalog.patterns).toEqual(['/iam/overview', '/iam/organizations'])
+
+    expect(screen.queryByText('Tianquan-Jianshen 权限平台')).not.toBeInTheDocument()
+    expect(screen.queryByRole('navigation', {name: '主菜单'})).not.toBeInTheDocument()
+
+    await attachedPorts[0]!.present({
+      mode: 'show',
+      navigationId: 1,
+      tabKey: '["tianquan-jianshen","tianquan-jianshen.page.directory-organizations"]',
+      target: { path: '/iam/organizations', search: '' },
+      signal: new AbortController().signal,
+    })
+
+    await waitFor(() => expect(screen.getByText('总部')).toBeInTheDocument())
   })
 })

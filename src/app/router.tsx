@@ -1,15 +1,36 @@
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {Result} from 'antd'
 import {gatewayAuth} from '../features/auth/gatewayAuth'
-import {EnterpriseLayout, type EnterpriseLayoutConfig,} from '@stellar-enclosure/stellar-enclosure-web-shared'
-import {Navigate, Route, Routes} from 'react-router-dom'
-import type {PropsWithChildren} from 'react'
+import {
+  EmbeddedWorkbench,
+  EnterpriseLayout,
+  type AppCatalogStatus,
+  type EnterpriseLayoutConfig,
+  type Presentation,
+  type WorkbenchHost,
+} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {Navigate, Outlet, Route, RouterProvider, Routes, createMemoryRouter, useNavigate} from 'react-router-dom'
+import {useCallback, useMemo, useState, type PropsWithChildren} from 'react'
 import {version} from '../../package.json'
+import {buildJianshenCatalogPages} from '../workbench/routes'
 import {applicationRouteDescriptors, isRouteAllowed, resolveApplicationLanding, visibleNavigation} from './navigation'
 import type {FeatureRouteDescriptor} from '../features/shared/RouteDescriptor'
 
-export const ApplicationRouter = ({ embedded = false }: { readonly embedded?: boolean }) => {
-    const {about, snapshot, binding} = useRbac3Authorization()
+export const ApplicationRouter = ({
+  embedded = false,
+  workbenchHost,
+}: {
+  readonly embedded?: boolean
+  readonly workbenchHost?: WorkbenchHost
+}) => {
+  if (workbenchHost) {
+    return <JianshenWorkbenchRouter workbenchHost={workbenchHost} />
+  }
+  return <StandardApplicationRouter embedded={embedded} />
+}
+
+const StandardApplicationRouter = ({ embedded = false }: { readonly embedded?: boolean }) => {
+  const {about, snapshot, binding} = useRbac3Authorization()
   if (!about) return null
   const landing = resolveApplicationLanding(snapshot, binding)
   const fallback = landing === null
@@ -25,6 +46,85 @@ export const ApplicationRouter = ({ embedded = false }: { readonly embedded?: bo
       </Routes>
     </AdminLayout>
   )
+}
+
+const JianshenFallbackRoute = () => {
+  const {about, snapshot, binding} = useRbac3Authorization()
+  if (!about) return null
+  const landing = resolveApplicationLanding(snapshot, binding)
+  return landing === null
+    ? <Result status="403" title="没有可访问页面" subTitle="当前激活角色没有可用的本地路由。" />
+    : <Navigate to={landing} replace />
+}
+
+const JianshenWorkbenchShell = ({ workbenchHost }: { readonly workbenchHost: WorkbenchHost }) => {
+  const {status, about, snapshot, binding} = useRbac3Authorization()
+  const navigate = useNavigate()
+
+  const pages = useMemo(
+    () => (about && snapshot && binding ? buildJianshenCatalogPages(snapshot, binding) : []),
+    [about, snapshot, binding],
+  )
+
+  const catalogStatus: AppCatalogStatus = useMemo(() => {
+    if (!about || !snapshot || !binding || status === 'UNINITIALIZED' || status === 'LOADING_ABOUT') {
+      return 'authorizing'
+    }
+    if (status === 'ERROR_RETRYABLE' || status === 'ERROR_FATAL') return 'failed'
+    if (status === 'FORBIDDEN_NO_ROUTE' || pages.length === 0) return 'denied'
+    return 'ready'
+  }, [about, snapshot, binding, status, pages.length])
+
+  const handlePresent = useCallback(async (presentation: Presentation) => {
+    if (presentation.mode !== 'show') {
+      await navigate('/__workbench/idle', { replace: true })
+      return { ok: true as const }
+    }
+    const nextPath = presentation.target.path + (presentation.target.search || '')
+    await navigate(nextPath, { replace: true })
+    return { ok: true as const }
+  }, [navigate])
+
+  return (
+    <EmbeddedWorkbench
+      host={workbenchHost}
+      status={catalogStatus}
+      pages={pages}
+      onPresent={handlePresent}
+    >
+      <div className="tianquan-jianshen-workbench-outlet" style={{ width: '100%', minWidth: 0 }}>
+        <Outlet />
+      </div>
+    </EmbeddedWorkbench>
+  )
+}
+
+const JianshenWorkbenchRouter = ({ workbenchHost }: { readonly workbenchHost: WorkbenchHost }) => {
+  const [router] = useState(() =>
+    createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <JianshenWorkbenchShell workbenchHost={workbenchHost} />,
+          children: [
+            { path: '__workbench/idle', element: null },
+            ...applicationRouteDescriptors.map((route) => ({
+              path: route.path.replace(/^\//, ''),
+              element: (
+                <RouteAccessGuard route={route}>
+                  <route.component />
+                </RouteAccessGuard>
+              ),
+            })),
+            { path: '*', element: <JianshenFallbackRoute /> },
+          ],
+        },
+      ],
+      { initialEntries: ['/__workbench/idle'] },
+    ),
+  )
+
+  return <RouterProvider router={router} />
 }
 
 const RouteAccessGuard = ({ route, children }: PropsWithChildren<{ readonly route: FeatureRouteDescriptor }>) => {
