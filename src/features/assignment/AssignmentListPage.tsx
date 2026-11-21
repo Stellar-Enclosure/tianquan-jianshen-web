@@ -5,7 +5,7 @@ import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Popconfirm, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, useEmbeddedWorkbench, useWorkbenchLeaveGuard} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {AssignmentEditor} from './AssignmentEditor'
 import {directoryApi} from '../directory/directory.api'
 import {
@@ -20,6 +20,7 @@ export interface AssignmentListPageProps {
 }
 
 export const AssignmentListPage = ({ userId }: AssignmentListPageProps) => {
+  const {embedded, activeTabKey} = useEmbeddedWorkbench()
   const {status} = useRbac3Authorization()
   const canManageAssignments = useResourcePermission('tianquan-jianshen.button.AssignmentListPage.manage1')
   const { effectiveTenantId } = useFeatureTenantContext()
@@ -67,9 +68,14 @@ export const AssignmentListPage = ({ userId }: AssignmentListPageProps) => {
   })
   const fieldsWritable = useWritableFields('RoleAssignmentChangeRequestDTO')
   const mutationDisabled = !fieldsWritable || !targetUser.data || targetUser.isError || targetUser.isFetching || create.isPending || change.isPending
+  useWorkbenchLeaveGuard(
+    activeTabKey ?? `jianshen:assignments:${userId}`,
+    {dirty: editorOpen, pendingMutation: create.isPending || change.isPending},
+  )
   return (
+    <div style={{width: '100%'}}>
     <Card
-      title={`用户 ${userId} 的角色任职`}
+      title={!embedded ? `用户 ${userId} 的角色任职` : undefined}
       extra={(
         <ResourceGuard resourceKey="tianquan-jianshen.button.AssignmentListPage.manage1">
           <Button type="primary" disabled={mutationDisabled} onClick={() => setEditorOpen(true)}>新增任职资格</Button>
@@ -110,6 +116,7 @@ export const AssignmentListPage = ({ userId }: AssignmentListPageProps) => {
       </PageState>
       {targetUser.data && <AssignmentEditor open={editorOpen} saving={mutationDisabled} error={create.error} expectedUserAuthVersion={targetUser.data.authVersion} onCancel={() => setEditorOpen(false)} onSave={create.mutate} />}
     </Card>
+    </div>
   )
 }
 

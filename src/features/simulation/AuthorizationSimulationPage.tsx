@@ -4,7 +4,7 @@ import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianqu
 import {useMutation} from '@tanstack/react-query'
 import {Alert, Button, Card, Col, Descriptions, Form, Input, Row, Space, Tag, Typography} from 'antd'
 import {useFeatureApi} from '../shared/FeatureApi'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {type AuthorizationSimulationCommand, simulationApi, type SimulationDecisionBundle} from './simulation.api'
 
 interface SimulationForm {
@@ -22,7 +22,8 @@ interface RoleImpactForm {
 const permissionList = (value?: string) => value?.split(',').map((item) => item.trim()).filter(Boolean) ?? []
 
 export const AuthorizationSimulationPage = () => {
-    const {about} = useRbac3Authorization()
+  const {embedded} = useEmbeddedWorkbench()
+  const {about} = useRbac3Authorization()
   const fieldsWritable = useWritableFields('AuthorizationSimulationRequestDTO', 'DecisionRequestDTO', 'AuthorizationDecisionResourceVO', 'AuthorizationDecisionSubjectVO', 'TokenVersionsVO', 'HypothesisDTO')
   const impactWritable = useWritableFields('AuthorizationRoleChangeImpactRequestDTO')
   const api = simulationApi(useFeatureApi())
@@ -51,7 +52,8 @@ export const AuthorizationSimulationPage = () => {
     mutationFn: (form: RoleImpactForm) => api.roleChangeImpact(form.roleId),
   })
   return (
-    <Card title="授权模拟">
+    <div style={{width: '100%'}}>
+    <Card title={!embedded ? '授权模拟' : undefined}>
         <Alert type="info" showIcon title="模拟固定在一个一致快照上，仅返回判断和证据，不修改角色、权限或业务数据。"/>
       <Form<SimulationForm> disabled={!fieldsWritable} layout="vertical" onFinish={values => fieldsWritable && simulation.mutate(values)} style={{ marginTop: 16 }}>
         <Row gutter={16}>
@@ -112,6 +114,7 @@ export const AuthorizationSimulationPage = () => {
         </PageState>
       </Card>
     </Card>
+    </div>
   )
 }
 

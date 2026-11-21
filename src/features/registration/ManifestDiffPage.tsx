@@ -1,7 +1,7 @@
 import {useQuery} from '@tanstack/react-query'
 import {Alert, Card, Select, Space, Table, Tag} from 'antd'
 import {useState} from 'react'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {catalogScopeKey} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import {useFeatureApi} from '../shared/FeatureApi'
 import {CatalogScopePicker, useCatalogScope} from './CatalogScopePicker'
@@ -37,7 +37,12 @@ const DiffForScope = ({target}: {target: CatalogScope}) => {
     empty={!selectedVersion} onRetry={() => void diff.refetch()}>{diff.data && <ManifestDiffView value={diff.data} />}</PageState></>
 }
 export const ManifestDiffPage = () => {
+  const {embedded} = useEmbeddedWorkbench()
   const scope = useCatalogScope()
-  return <Card title="Manifest 差异与权限影响"><CatalogScopePicker value={scope} />
-    {scope.selected && <DiffForScope key={catalogScopeKey(scope.selected.scope)} target={scope.selected.scope} />}</Card>
+  return (
+    <div style={{width: '100%'}}>
+      <Card title={!embedded ? 'Manifest 差异与权限影响' : undefined}><CatalogScopePicker value={scope} />
+        {scope.selected && <DiffForScope key={catalogScopeKey(scope.selected.scope)} target={scope.selected.scope} />}</Card>
+    </div>
+  )
 }

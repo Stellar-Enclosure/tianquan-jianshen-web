@@ -2,9 +2,11 @@ vi.mock('../../permissions/FieldCatalog', () => ({useWritableFields: () => true,
 import {TestAuthorizationProvider, createAuthorizationFixtureClient} from '../../test/authorization'
 import {type Rbac3Client} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
-import {fireEvent, render, screen, waitFor} from '@testing-library/react'
-import type {PropsWithChildren} from 'react'
-import {describe, expect, it, vi} from 'vitest'
+import { EmbeddedWorkbench, type WorkbenchHost, type WorkbenchPort } from '@stellar-enclosure/stellar-enclosure-web-shared'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { PropsWithChildren } from 'react'
+import { MemoryRouter } from 'react-router-dom'
+import { describe, expect, it, vi } from 'vitest'
 import {type FeatureApiClient, type FeatureApiRequest, FeatureApiProvider} from '../shared/FeatureApi'
 import {AuditLogPage} from './AuditLogPage'
 import type {AuditPage} from './audit.api'
@@ -128,5 +130,45 @@ describe('audit log page', () => {
     expect(screen.getAllByText(/ARTIFACT_DIGEST_MISMATCH/).length).toBeGreaterThan(0)
     expect(screen.getByText('诊断时间（未生成快照）')).toBeInTheDocument()
     expect(screen.queryByText('权限来源未核实')).not.toBeInTheDocument()
+  })
+
+  it('renders cursor audit logs inside WorkspaceList regions when embedded and fetches nextCursor cleanly', async () => {
+    const baseData = await request('/fixture')
+    request.mockResolvedValueOnce({
+      ...baseData,
+      nextCursor: 'cursor-page-2',
+    })
+    const ports: WorkbenchPort[] = []
+    const host: WorkbenchHost = {
+      attach: (next) => {
+        ports.push(next)
+        return { ok: true }
+      },
+      reportCatalog: () => ({ ok: true }),
+      requestNavigation: () => ({ ok: true }),
+    }
+    const { container } = render(
+      <MemoryRouter initialEntries={['/iam/diagnostics/audit']}>
+        <EmbeddedWorkbench host={host} status="ready" pages={[]} onPresent={async () => ({ ok: true as const })}>
+          <AuditLogPage />
+        </EmbeddedWorkbench>
+      </MemoryRouter>,
+      { wrapper },
+    )
+
+    await waitFor(() => expect(screen.getByText('AUTHORIZATION_DENIED_DIAGNOSTIC')).toBeInTheDocument())
+    expect(container.querySelector('[data-region="query"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-region="table"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-region="pagination"]')).toBeInTheDocument()
+
+    request.mockResolvedValueOnce({
+      ...baseData,
+      nextCursor: null,
+    })
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }))
+    await waitFor(() => expect(request).toHaveBeenCalledWith('/api/tianquan-jianshen/v1/audit-logs', expect.objectContaining({
+      query: expect.objectContaining({ cursor: 'cursor-page-2' }),
+    })))
+    cleanup()
   })
 })

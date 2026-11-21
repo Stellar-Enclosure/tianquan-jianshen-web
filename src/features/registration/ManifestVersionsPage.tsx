@@ -3,7 +3,7 @@ import {resources} from '../../permissions/resources'
 import {gatewayAuth} from '../auth/gatewayAuth'
 import {loadActivationIntent, storeActivationIntent, type ActivationIntent} from './activationIntent'
 import {useMutation, useQueries, useQuery, useQueryClient} from '@tanstack/react-query'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {allowsSnapshotRequirement, catalogScopeKey} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import {Alert, Button, Card, Checkbox, Descriptions, Select, Space, Table, Tag, Typography} from 'antd'
 import {useEffect, useState} from 'react'
@@ -125,17 +125,45 @@ const VersionsForScope = ({target}: {target: CatalogScope}) => {
       <Button loading={checkOperation.isPending} onClick={() => checkOperation.mutate()}>查询该操作</Button>
       {canRetry && <Button loading={activate.isPending} disabled={!canActivate || (pending.requiresManage && !canApproveExpansion) || pending.qualificationsExpireAt.some(value => Date.parse(value) <= now)} onClick={retryOriginal}>重试原激活请求</Button>}
     </Space>} />}
-    <Card size="small" title="激活历史"><PageState loading={history.isPending} error={history.error} empty={history.data?.versions.length === 0} onRetry={() => void history.refetch()}>
-      <Table<ActivationDescriptor> rowKey="activationVersion" dataSource={history.data?.versions} pagination={false} expandable={{expandedRowRender: value => <pre style={{whiteSpace: 'pre-wrap'}}>{JSON.stringify(value.producers, null, 2)}</pre>}} columns={[
-        {title: '激活修订', dataIndex: 'activationVersion'}, {title: '策略版本', dataIndex: 'policyVersion'}, {title: '时间', dataIndex: 'createdAt'}, {title: '操作 ID', dataIndex: 'operationId'},
-      ]} />
-      <Space style={{marginTop: 12}}><Button disabled={beforeHistory === '0'} onClick={() => setBeforeHistory('0')}>最新历史</Button>
-        <Button disabled={!history.data?.versions.length} onClick={() => setBeforeHistory(history.data!.versions.at(-1)!.activationVersion)}>更早历史</Button></Space>
-    </PageState></Card>
+    <Card size="small" title="激活历史">
+      <WorkspaceList
+        ariaLabel="激活历史"
+        toolbar={
+          <Space>
+            <Button disabled={beforeHistory === '0'} onClick={() => setBeforeHistory('0')}>最新历史</Button>
+            <Button disabled={!history.data?.versions.length} onClick={() => setBeforeHistory(history.data!.versions.at(-1)!.activationVersion)}>更早历史</Button>
+          </Space>
+        }
+        pageState={{loading: history.isPending, error: history.error, empty: history.data?.versions.length === 0, onRetry: () => void history.refetch()}}
+        table={
+          <Table<ActivationDescriptor> rowKey="activationVersion" dataSource={history.data?.versions} pagination={false} expandable={{expandedRowRender: value => <pre style={{whiteSpace: 'pre-wrap'}}>{JSON.stringify(value.producers, null, 2)}</pre>}} columns={[
+            {title: '激活修订', dataIndex: 'activationVersion'}, {title: '策略版本', dataIndex: 'policyVersion'}, {title: '时间', dataIndex: 'createdAt'}, {title: '操作 ID', dataIndex: 'operationId'},
+          ]} />
+        }
+      />
+    </Card>
   </Space>
 }
 export const ManifestVersionsPage = () => {
+  const {embedded} = useEmbeddedWorkbench()
   const scope = useCatalogScope()
-  return <Card title="Manifest 候选与激活历史"><CatalogScopePicker value={scope} />
-    {scope.selected && <VersionsForScope key={catalogScopeKey(scope.selected.scope)} target={scope.selected.scope} />}</Card>
+  if (!scope.selected) {
+    return (
+      <WorkspaceList
+        ariaLabel="Manifest 候选与激活历史"
+        filters={<CatalogScopePicker value={scope} />}
+        toolbar={!embedded ? <Typography.Text strong>Manifest 候选与激活历史</Typography.Text> : undefined}
+        pageState={{loading: scope.query.isPending, error: scope.query.error, empty: true, emptyDescription: '请选择权限目录范围'}}
+        table={<Table rowKey="activationVersion" dataSource={[]} pagination={false} columns={[]} />}
+      />
+    )
+  }
+  return (
+    <div style={{width: '100%'}}>
+      <Card title={!embedded ? 'Manifest 候选与激活历史' : undefined}>
+        <CatalogScopePicker value={scope} />
+        <VersionsForScope key={catalogScopeKey(scope.selected.scope)} target={scope.selected.scope} />
+      </Card>
+    </div>
+  )
 }

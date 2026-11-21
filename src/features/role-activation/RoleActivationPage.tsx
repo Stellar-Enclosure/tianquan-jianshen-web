@@ -4,7 +4,7 @@ import {useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Descriptions, Modal, Space, Tag, Typography} from 'antd'
 import {useMemo, useState} from 'react'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, useEmbeddedWorkbench, useWorkbenchLeaveGuard} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {findDsdConflict, RoleActivationSelector} from './RoleActivationSelector'
 import {roleActivationApi} from './roleActivation.api'
 import {gatewayAuth} from '../auth/gatewayAuth'
@@ -15,7 +15,8 @@ interface RoleActivationRequest {
 }
 
 export const RoleActivationPage = () => {
-    const authorization = useRbac3Authorization()
+  const {embedded, activeTabKey} = useEmbeddedWorkbench()
+  const authorization = useRbac3Authorization()
   const canActivateAfterAbout = useResourcePermission('tianquan-jianshen.button.RoleActivationPage.use')
   const { replaceActiveRoles } = useActiveRoles()
   const { effectiveTenantId } = useFeatureTenantContext()
@@ -86,9 +87,16 @@ export const RoleActivationPage = () => {
     setStepUpError(null)
   }
   const standaloneUrl = stepUpRequest ? gatewayAuth.standaloneUrl(true) : undefined
+  useWorkbenchLeaveGuard(
+    activeTabKey ?? 'jianshen:role-activation',
+    {
+      dirty: selectionOverride !== null,
+      pendingMutation: stepUpSubmitting || authorization.status === 'REPLACING_ACTIVE_ROLES',
+    },
+  )
   return (
-    <>
-        <Card title="激活当前用户角色">
+    <div style={{width: '100%'}}>
+        <Card title={!embedded ? '激活当前用户角色' : undefined}>
         <Typography.Paragraph type="secondary">
             选择当前用户需要的一个或多个激活根角色。提交的是完整 Root Set；服务端按用户授权版本原子替换并返回权威集合。
         </Typography.Paragraph>
@@ -169,7 +177,7 @@ export const RoleActivationPage = () => {
           />
         )}
       </Modal>
-    </>
+    </div>
   )
 }
 

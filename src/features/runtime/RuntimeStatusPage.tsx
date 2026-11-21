@@ -3,13 +3,14 @@ import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Descriptions, Space, Tag} from 'antd'
 import {useState} from 'react'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {ControlPlaneStatusCards} from './ControlPlaneStatusCards'
 import {MutationRecoveryPanel} from './MutationRecoveryPanel'
 import {runtimeApi} from './runtime.api'
 
 export const RuntimeStatusPage = () => {
-    const {status: authorizationStatus} = useRbac3Authorization()
+  const {embedded} = useEmbeddedWorkbench()
+  const {status: authorizationStatus} = useRbac3Authorization()
   const { effectiveTenantId } = useFeatureTenantContext()
   const api = runtimeApi(useFeatureApi())
   const queryClient = useQueryClient()
@@ -32,7 +33,8 @@ export const RuntimeStatusPage = () => {
     onSuccess: async () => queryClient.invalidateQueries({ queryKey: ['tianquan-jianshen', 'runtime-mutations'] }),
   })
   return (
-    <Card title="Tianquan-Jianshen 运行状态">
+    <div style={{width: '100%'}}>
+    <Card title={!embedded ? 'Tianquan-Jianshen 运行状态' : undefined}>
       <Alert type="info" showIcon title="Tianshu Config Client、Definition、HTTP Provider Lease、Yuheng Release 与运维状态是独立事实；任一缺失都不能由其他绿色状态替代。" />
       <PageState loading={status.isPending || mutations.isPending} error={status.error ?? mutations.error ?? retry.error} empty={!status.data}>
         {status.data && (
@@ -71,5 +73,6 @@ export const RuntimeStatusPage = () => {
         )}
       </PageState>
     </Card>
+    </div>
   )
 }

@@ -6,7 +6,7 @@ import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianqu
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Form, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag, Typography} from 'antd'
 import {useState} from 'react'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, useEmbeddedWorkbench, useWorkbenchLeaveGuard} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {
   constraintApi,
@@ -225,6 +225,7 @@ const commandFor = (kind: RuleKind, values: ConstraintFormValues, target?: Catal
 }
 
 export const ConstraintPage = () => {
+  const {embedded, activeTabKey} = useEmbeddedWorkbench()
   const {status} = useRbac3Authorization()
   const {effectiveTenantId} = useFeatureTenantContext()
   const api = constraintApi(useFeatureApi())
@@ -288,6 +289,13 @@ export const ConstraintPage = () => {
     onSuccess: () => queryClient.invalidateQueries({queryKey: ['tianquan-jianshen', 'about']}),
   })
   const mutationError = save.error ?? savePrerequisites.error ?? saveCardinality.error
+  useWorkbenchLeaveGuard(
+    activeTabKey ?? 'jianshen:constraints',
+    {
+      dirty: editor !== null,
+      pendingMutation: save.isPending || savePrerequisites.isPending || saveCardinality.isPending,
+    },
+  )
   const openEditor = (kind: RuleKind, row?: ConstraintRow) => {
     if (kind === 'data' && !scope.selected) return
     setEditor({kind, target: kind === 'data' ? (row as DataRuleView | undefined)?.target ?? target : undefined,
@@ -296,7 +304,8 @@ export const ConstraintPage = () => {
   }
 
   return (
-    <Card title="授权约束">
+    <div style={{width: '100%'}}>
+    <Card title={!embedded ? '授权约束' : undefined}>
       <Typography.Paragraph type="secondary">
         DSD 只引用同一 APP 的激活根角色，并在会话激活角色集合原子替换时校验；SSD、Prerequisite 与 Cardinality 在分配时校验。
       </Typography.Paragraph>
@@ -475,6 +484,7 @@ export const ConstraintPage = () => {
         </Modal>
       )}
     </Card>
+    </div>
   )
 }
 

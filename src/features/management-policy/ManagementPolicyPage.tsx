@@ -4,11 +4,12 @@ import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Descriptions, Drawer, Popconfirm, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, useEmbeddedWorkbench, useWorkbenchLeaveGuard} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {ManagementPolicyEditor} from './ManagementPolicyEditor'
 import {managementPolicyApi, type ManagementPolicyView, type SaveManagementPolicyCommand} from './managementPolicy.api'
 
 export const ManagementPolicyPage = () => {
+  const {embedded, activeTabKey} = useEmbeddedWorkbench()
   const {status} = useRbac3Authorization()
   const {effectiveTenantId} = useFeatureTenantContext()
   const api = managementPolicyApi(useFeatureApi())
@@ -55,9 +56,14 @@ export const ManagementPolicyPage = () => {
   })
   const edit = (policy: ManagementPolicyView | null) => { setSelected(policy); setOpen(true) }
   const mutationError = save.error ?? disable.error
+  useWorkbenchLeaveGuard(
+    activeTabKey ?? 'jianshen:management-policies',
+    {dirty: open, pendingMutation: save.isPending || disable.isPending},
+  )
   return (
+    <div style={{width: '100%'}}>
     <Card
-      title="委托管理策略"
+      title={!embedded ? '委托管理策略' : undefined}
       extra={<ResourceGuard resourceKey="tianquan-jianshen.button.ManagementPolicyPage.manage1"><Button type="primary" onClick={() => edit(null)}>新增完整策略</Button></ResourceGuard>}
     >
       <Typography.Paragraph type="secondary">
@@ -149,5 +155,6 @@ export const ManagementPolicyPage = () => {
         </PageState>
       </Drawer>
     </Card>
+    </div>
   )
 }

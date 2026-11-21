@@ -5,7 +5,7 @@ import {Alert, Button, Card, Descriptions, Drawer, Form, Input, InputNumber, Mod
 import {useState} from 'react'
 import {Link} from 'react-router-dom'
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {roleApi, type RoleImpactView, type RoleView} from './role.api'
 
@@ -54,6 +54,7 @@ const statusOptions = [
 ]
 
 export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
+  const {embedded} = useEmbeddedWorkbench()
   const {status} = useRbac3Authorization()
   const {effectiveTenantId} = useFeatureTenantContext()
   const api = roleApi(useFeatureApi())
@@ -214,8 +215,9 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
   }
 
   return (
+    <div style={{width: '100%'}}>
     <Card
-      title="角色图谱"
+      title={!embedded ? '角色图谱' : undefined}
       extra={(
         <ResourceGuard resourceKey="tianquan-jianshen.button.RoleGraphPage.create1">
           <Button type="primary" onClick={openCreate}>新建角色</Button>
@@ -387,5 +389,6 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
         })()}
       </Drawer>
     </Card>
+    </div>
   )
 }

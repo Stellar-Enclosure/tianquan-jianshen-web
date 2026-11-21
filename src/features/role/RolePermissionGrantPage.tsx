@@ -1,7 +1,7 @@
 import {useWritableFields} from '../../permissions/FieldCatalog'
 import {useInfiniteQuery, useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, useEmbeddedWorkbench, useWorkbenchLeaveGuard} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {catalogScopeKey, type CatalogScope} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import {Alert, Button, Card, Checkbox, Input, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
@@ -13,6 +13,7 @@ import {registrationApi} from '../registration/registration.api'
 import {roleApi} from './role.api'
 
 const RolePermissionsForScope = ({roleId, target}: {roleId: string; target: CatalogScope}) => {
+  const {activeTabKey} = useEmbeddedWorkbench()
   const fieldsWritable = useWritableFields('ReplaceRolePermissionsRequestDTO')
   const client = useFeatureApi()
   const roles = roleApi(client)
@@ -46,6 +47,10 @@ const RolePermissionsForScope = ({roleId, target}: {roleId: string; target: Cata
     return roles.replacePermissions(roleId, {target, permissionCodes: draft.codes, expectedVersion: draft.version, validFrom: from, validTo: to})
   }, onSuccess: async () => {setDraft(null); await queryClient.invalidateQueries({queryKey: key}); await refreshAuthorization()},
   onError: async error => {if ((error as {status?: number}).status === 409) await queryClient.invalidateQueries({queryKey: key})}})
+  useWorkbenchLeaveGuard(
+    activeTabKey ?? `jianshen:role-permissions:${roleId}:${catalogScopeKey(target)}`,
+    {dirty: draft !== null, pendingMutation: save.isPending},
+  )
   const decisionId = (save.error as {decisionId?: unknown} | null)?.decisionId
   return <Space orientation="vertical" style={{width: '100%'}}>
     <Alert type="info" showIcon title="角色显式授予权限字符" description="资源只解释权限的使用位置，不作为授予记录。保存会替换当前范围下该角色的全部直接授予；空选择明确清空。" />
@@ -73,15 +78,20 @@ const RolePermissionsForScope = ({roleId, target}: {roleId: string; target: Cata
   </Space>
 }
 export const RolePermissionGrantPage = ({roleId}: {roleId: string}) => {
+  const {embedded} = useEmbeddedWorkbench()
   const {status} = useRbac3Authorization()
   const api = roleApi(useFeatureApi())
   const roles = useQuery({queryKey: ['tianquan-jianshen', 'roles-for-permission-scope', roleId], queryFn: () => api.roles(), enabled: status === 'READY'})
   const role = roles.data?.find(value => value.roleId === roleId)
   const scope = useCatalogScope(role?.applicationId)
-  return <Card title={`角色权限字符${role ? ' · ' + role.roleName : ''}`}><CatalogScopePicker value={scope} />
-    <PageState loading={roles.isPending} error={roles.error} empty={!role} emptyDescription="角色不存在或不可访问" onRetry={() => void roles.refetch()}>
-      {role && scope.selected && <RolePermissionsForScope key={roleId + ':' + catalogScopeKey(scope.selected.scope)} roleId={roleId} target={scope.selected.scope} />}
-    </PageState></Card>
+  return (
+    <div style={{width: '100%'}}>
+      <Card title={!embedded ? `角色权限字符${role ? ' · ' + role.roleName : ''}` : undefined}><CatalogScopePicker value={scope} />
+        <PageState loading={roles.isPending} error={roles.error} empty={!role} emptyDescription="角色不存在或不可访问" onRetry={() => void roles.refetch()}>
+          {role && scope.selected && <RolePermissionsForScope key={roleId + ':' + catalogScopeKey(scope.selected.scope)} roleId={roleId} target={scope.selected.scope} />}
+        </PageState></Card>
+    </div>
+  )
 }
 
 const localDateTime = (value: string | null | undefined) => {

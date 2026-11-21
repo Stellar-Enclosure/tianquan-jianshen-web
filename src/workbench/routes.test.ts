@@ -1,7 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('../permissions/FieldCatalog', () => ({
+  useWritableFields: () => true,
+  useWritableFieldKeys: () => true,
+}))
 import {
   validatePageDescriptor,
   validateRelativeRoutePath,
@@ -51,6 +56,7 @@ const FULL_PERMISSIONS = [
   'system:permission-catalog:read',
   'system:business:read',
   'system:role:read',
+  'system:role-permission:read',
   'system:authorization-constraint:read',
   'system:data-rule:read',
   'system:operation-sod:read',
@@ -139,7 +145,93 @@ describe('jianshen directory and resource workbench views', () => {
     }
     const feature: FeatureApiClient = {
       request: async <T,>(requestPath: string) => {
-        if (requestPath === '/api/tianquan-jianshen/v1/iam/runtime') return {} as T
+        if (requestPath === '/api/tianquan-jianshen/v1/iam/roles') {
+          return [
+            {
+              roleId: 'role-1',
+              applicationId: '71',
+              roleCode: 'ADMIN',
+              roleName: '管理员',
+              roleType: 'MANAGEMENT',
+              riskLevel: 'HIGH',
+              privileged: true,
+              status: 'ACTIVE',
+              version: 1,
+            },
+            {
+              roleId: 'role-2',
+              applicationId: '71',
+              roleCode: 'AUDITOR',
+              roleName: '审计员',
+              roleType: 'PUBLIC',
+              riskLevel: 'LOW',
+              privileged: false,
+              status: 'ACTIVE',
+              version: 1,
+            },
+          ] as T
+        }
+        if (requestPath.includes('/roles/') && requestPath.endsWith('/impact')) {
+          const roleId = requestPath.split('/').at(-2) ?? 'role-1'
+          return {
+            roleId,
+            roleFamily: [roleId],
+            activationRoots: [roleId],
+            effectiveFamilyRisk: 'LOW',
+            permissionCount: 1,
+            conflicts: [],
+          } as T
+        }
+        if (requestPath.includes('/roles/') && requestPath.endsWith('/permissions')) {
+          return {
+            roleId: 'role-1',
+            target: scope,
+            version: '1',
+            catalogVersion: '1',
+            permissions: [{ permissionCode: 'orders:read', validFrom: null, validTo: null }],
+          } as T
+        }
+        if (requestPath.includes('/producers')) {
+          return { target: scope, activeRevision: '1', producers: [] } as T
+        }
+        if (requestPath.includes('/versions')) {
+          return { currentRevision: '1', versions: [] } as T
+        }
+        if (requestPath.includes('/assignments')) return [] as T
+        if (requestPath.includes('/users/user-1')) {
+          return { userId: 'user-1', identitySub: 'u1', status: 'ACTIVE', authVersion: 3 } as T
+        }
+        if (requestPath.includes('/management-policies')) return [] as T
+        if (requestPath.includes('/management-capabilities')) {
+          return { policyIds: [], operations: [], activationRootRoleIds: [] } as T
+        }
+        if (requestPath.includes('/activation-candidates')) {
+          return { applications: [], dsdConstraints: [], configurationErrors: [] } as T
+        }
+        if (requestPath.includes('/active-roles')) {
+          return { authVersion: 1, policyVersion: 1, activeRoles: [] } as T
+        }
+        if (requestPath.includes('/sod-sets') || requestPath.includes('/data-rules') || requestPath.includes('/operation-sod-rules')) {
+          return [] as T
+        }
+        if (requestPath === '/api/tianquan-jianshen/v1/iam/runtime/mutations') {
+          return { items: [] } as T
+        }
+        if (requestPath === '/api/tianquan-jianshen/v1/iam/runtime/yuheng-tianshu') {
+          return { definition: { status: 'ACCEPTED', warnings: [] }, providerLease: { state: 'ACTIVE' }, gatewayRelease: { status: 'ROUTABLE' }, checkedAt: '2026-11-20T00:00:00Z' } as T
+        }
+        if (requestPath.includes('/audit-logs')) {
+          return { items: [], nextCursor: null } as T
+        }
+        if (requestPath === '/api/tianquan-jianshen/v1/iam/runtime') {
+          return {
+            status: 'OK',
+            tenantId: '42',
+            policyVersion: 1,
+            authVersion: 1,
+            checkedAt: '2026-11-20T00:00:00Z',
+          } as T
+        }
         if (requestPath === '/api/tianquan-jianshen/v1/iam/users') {
           return {
             items: [{ userId: 'u-1', identitySub: 'alice', status: 'ACTIVE', authVersion: 1 }],
@@ -195,7 +287,7 @@ describe('jianshen directory and resource workbench views', () => {
             enabled: true,
           }] as T
         }
-        if (requestPath === '/api/tianquan-jianshen/v1/permission-catalogs/scopes') {
+        if (requestPath.endsWith('/permission-catalogs/scopes')) {
           return { scopes: [{ scope, applicationId: '71', producerCount: 1 }], nextAfterId: null } as T
         }
         if (requestPath.includes('/definitions')) {
@@ -331,5 +423,143 @@ describe('jianshen directory and resource workbench views', () => {
       signal: new AbortController().signal,
     })
     await waitFor(() => expect(screen.getByText('无权访问此页面')).toBeInTheDocument())
+  })
+
+  it('mounts Step 18 role, manifest, constraint, activation, simulation, runtime views and registers leave guards', async () => {
+    const scope = {
+      catalogScopeId: '101',
+      tenantId: '42',
+      businessCode: 'xingyuan',
+      applicationCode: 'tianquan-jianshen',
+      namespaceCode: 'default',
+      environment: 'test',
+    }
+    const feature: FeatureApiClient = {
+      request: async <T,>(requestPath: string) => {
+        if (requestPath.endsWith('/permission-catalogs/scopes')) {
+          return { scopes: [{ scope, applicationId: '71', producerCount: 1 }], nextAfterId: null } as T
+        }
+        if (requestPath === '/api/tianquan-jianshen/v1/iam/roles') {
+          return [
+            {
+              roleId: 'role-1',
+              applicationId: '71',
+              roleCode: 'ADMIN',
+              roleName: '管理员',
+              roleType: 'MANAGEMENT',
+              riskLevel: 'HIGH',
+              privileged: true,
+              status: 'ACTIVE',
+              version: 1,
+            },
+            {
+              roleId: 'role-2',
+              applicationId: '71',
+              roleCode: 'AUDITOR',
+              roleName: '审计员',
+              roleType: 'PUBLIC',
+              riskLevel: 'LOW',
+              privileged: false,
+              status: 'ACTIVE',
+              version: 1,
+            },
+          ] as T
+        }
+        if (requestPath.includes('/roles/') && requestPath.endsWith('/impact')) {
+          const id = requestPath.split('/').at(-2) ?? 'role-1'
+          return { roleId: id, roleFamily: [id], activationRoots: [id], effectiveFamilyRisk: 'LOW', permissionCount: 1, conflicts: [] } as T
+        }
+        if (requestPath.includes('/roles/') && requestPath.endsWith('/permissions')) {
+          return { roleId: 'role-1', target: scope, version: '1', catalogVersion: '1', permissions: [{ permissionCode: 'orders:read', validFrom: null, validTo: null }] } as T
+        }
+        if (requestPath.includes('/definitions')) {
+          return {
+            target: scope,
+            kind: 'PERMISSION',
+            definitions: [{
+              id: 'def-1',
+              key: 'orders:write',
+              type: 'PERMISSION',
+              meaning: 'Write orders',
+              producerId: 'orders-java',
+              state: 'ACTIVE',
+              version: '1',
+              activeProducerVersion: '1.0',
+            }],
+            nextAfterId: null,
+          } as T
+        }
+        if (requestPath.includes('/producers')) return { target: scope, activeRevision: '1', producers: [] } as T
+        if (requestPath.includes('/versions')) return { currentRevision: '1', versions: [] } as T
+        if (requestPath.includes('/assignments')) return [] as T
+        if (requestPath.includes('/users/user-1')) return { userId: 'user-1', identitySub: 'u1', status: 'ACTIVE', authVersion: 3 } as T
+        if (requestPath.includes('/management-policies')) return [] as T
+        if (requestPath.includes('/management-capabilities')) return { policyIds: [], operations: [], activationRootRoleIds: [] } as T
+        if (requestPath.includes('/activation-candidates')) return { applications: [], dsdConstraints: [], configurationErrors: [] } as T
+        if (requestPath.includes('/active-roles')) return { authVersion: 1, policyVersion: 1, activeRoles: [] } as T
+        if (requestPath.includes('/sod-sets') || requestPath.includes('/data-rules') || requestPath.includes('/operation-sod-rules')) return [] as T
+        return {} as T
+      },
+    }
+
+    const ports: WorkbenchPort[] = []
+    const host: WorkbenchHost = {
+      attach: (next) => {
+        ports.push(next)
+        return { ok: true }
+      },
+      reportCatalog: () => ({ ok: true }),
+      requestNavigation: () => ({ ok: true }),
+    }
+    const sdk = createAuthorizationFixtureClient({
+      subject: 'mario',
+      tenantId: '42',
+      permissionCodes: [...FULL_PERMISSIONS, 'system:role-permission:grant', 'system:permission-catalog:activate'],
+    })
+
+    const { container } = render(
+      createElement(
+        QueryClientProvider,
+        { client: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+        createElement(
+          TestAuthorizationProvider,
+          { client: sdk },
+          createElement(
+            FeatureApiProvider,
+            { client: feature },
+            createElement(ApplicationRouter, { embedded: true, workbenchHost: host }),
+          ),
+        ),
+      ),
+    )
+
+    await waitFor(() => expect(ports).toHaveLength(1))
+    const port = ports[0]!
+
+    await port.present({
+      mode: 'show',
+      navigationId: 201,
+      tabKey: '["tianquan-jianshen","tianquan-jianshen.page.manifest-versions"]',
+      target: { path: '/iam/manifests', search: '' },
+      signal: new AbortController().signal,
+    })
+    await waitFor(() => expect(container.querySelector('[data-region="table"]')).toBeInTheDocument())
+
+    const rolePermTab1 = '["tianquan-jianshen","tianquan-jianshen.page.role-permissions","role-1"]'
+    await port.present({
+      mode: 'show',
+      navigationId: 202,
+      tabKey: rolePermTab1,
+      target: { path: '/iam/roles/role-1/permissions', search: '' },
+      signal: new AbortController().signal,
+    })
+    await waitFor(() => expect(screen.getByText('orders:write')).toBeInTheDocument())
+    expect(port.checkLeave({ reason: 'close', tabKey: rolePermTab1 })).toEqual(
+      expect.objectContaining({ ok: true, dirty: false }),
+    )
+    fireEvent.click(screen.getByRole('checkbox', { name: /orders:write/ }))
+    expect(port.checkLeave({ reason: 'close', tabKey: rolePermTab1 })).toEqual(
+      expect.objectContaining({ ok: true, dirty: true }),
+    )
   })
 })
