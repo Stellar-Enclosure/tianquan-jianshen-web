@@ -2,8 +2,8 @@ import {useWritableFields} from '../../permissions/FieldCatalog'
 import {ResourceGuard} from '../../permissions/ResourceGuard'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
-import {Button, Card, Descriptions, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag} from 'antd'
+import {PageState, WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {Button, Card, Descriptions, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {
@@ -42,6 +42,7 @@ const emptyFilter: UserDirectoryFilter = {
 const userIdentity = (user: UserDirectoryView) => user.identitySub || user.username || user.userId
 
 export const UserDirectoryPage = ({initialUserId = ''}: UserDirectoryPageProps) => {
+  const {embedded} = useEmbeddedWorkbench()
   const {status} = useRbac3Authorization()
   const {effectiveTenantId} = useFeatureTenantContext()
   const api = directoryApi(useFeatureApi())
@@ -189,53 +190,63 @@ export const UserDirectoryPage = ({initialUserId = ''}: UserDirectoryPageProps) 
       </Card>
 
       {listMode && (
-        <Card title="租户用户成员">
-          <Space wrap style={{marginBottom: 16}}>
-            <Input
-              aria-label="用户搜索"
-              placeholder="身份标识或用户 ID"
-              value={draftFilter.query}
-              onChange={(event) => setDraftFilter({...draftFilter, query: event.target.value})}
-              onPressEnter={() => { setSubmittedFilter({...draftFilter, page: 0}) }}
-            />
-            <Select
-              aria-label="用户状态"
-              placeholder="状态"
-              allowClear
-              style={{width: 140}}
-              value={draftFilter.status || undefined}
-              options={userStatuses}
-              onChange={(value) => setDraftFilter({...draftFilter, status: value ?? ''})}
-            />
-            <Input
-              aria-label="组织 ID"
-              placeholder="组织 ID"
-              value={draftFilter.orgUnitId}
-              onChange={(event) => setDraftFilter({...draftFilter, orgUnitId: event.target.value})}
-            />
-            <Input
-              aria-label="岗位 ID"
-              placeholder="岗位 ID"
-              value={draftFilter.positionId}
-              onChange={(event) => setDraftFilter({...draftFilter, positionId: event.target.value})}
-            />
-            <Button type="primary" onClick={() => { setSubmittedFilter({...draftFilter, page: 0}) }}>查询</Button>
-            <Button onClick={() => { setDraftFilter({...emptyFilter}); setSubmittedFilter({...emptyFilter}) }}>重置</Button>
-          </Space>
-          {mutationError && (
-            <AlertForMutation error={mutationError} />
-          )}
-          <PageState
-            loading={users.isPending}
-            error={users.error}
-            empty={users.data?.items.length === 0}
-            emptyDescription="当前租户暂无用户成员"
-            onRetry={() => { void users.refetch() }}
-          >
+        <WorkspaceList
+          ariaLabel="租户用户成员"
+          filters={
+            <Space wrap>
+              <Input
+                aria-label="用户搜索"
+                placeholder="身份标识或用户 ID"
+                value={draftFilter.query}
+                onChange={(event) => setDraftFilter({...draftFilter, query: event.target.value})}
+                onPressEnter={() => { setSubmittedFilter({...draftFilter, page: 0}) }}
+              />
+              <Select
+                aria-label="用户状态"
+                placeholder="状态"
+                allowClear
+                style={{width: 140}}
+                value={draftFilter.status || undefined}
+                options={userStatuses}
+                onChange={(value) => setDraftFilter({...draftFilter, status: value ?? ''})}
+              />
+              <Input
+                aria-label="组织 ID"
+                placeholder="组织 ID"
+                value={draftFilter.orgUnitId}
+                onChange={(event) => setDraftFilter({...draftFilter, orgUnitId: event.target.value})}
+              />
+              <Input
+                aria-label="岗位 ID"
+                placeholder="岗位 ID"
+                value={draftFilter.positionId}
+                onChange={(event) => setDraftFilter({...draftFilter, positionId: event.target.value})}
+              />
+              <Button type="primary" onClick={() => { setSubmittedFilter({...draftFilter, page: 0}) }}>查询</Button>
+              <Button onClick={() => { setDraftFilter({...emptyFilter}); setSubmittedFilter({...emptyFilter}) }}>重置</Button>
+            </Space>
+          }
+          toolbar={
+            <Space direction="vertical" size={8} style={{width: '100%'}}>
+              {!embedded && <Typography.Text strong>租户用户成员</Typography.Text>}
+              {mutationError && (
+                <AlertForMutation error={mutationError} />
+              )}
+            </Space>
+          }
+          pageState={{
+            loading: users.isPending,
+            error: users.error,
+            empty: users.data?.items.length === 0,
+            emptyDescription: '当前租户暂无用户成员',
+            onRetry: () => { void users.refetch() },
+          }}
+          table={
             <Table<UserDirectoryView>
               rowKey="userId"
               dataSource={users.data?.items ?? []}
               scroll={{x: 'max-content'}}
+              pagination={false}
               columns={[
                 {title: '用户 ID', dataIndex: 'userId', render: (value: string) => <TypographyCode value={value} />},
                 {title: '身份标识', render: (_value: unknown, user: UserDirectoryView) => userIdentity(user)},
@@ -262,16 +273,17 @@ export const UserDirectoryPage = ({initialUserId = ''}: UserDirectoryPageProps) 
                   ),
                 },
               ]}
-              pagination={{
-                current: (users.data?.page ?? submittedFilter.page ?? 0) + 1,
-                pageSize: users.data?.size ?? submittedFilter.size ?? 20,
-                total: users.data?.total ?? 0,
-                showSizeChanger: true,
-                onChange: (current, size) => setSubmittedFilter({...submittedFilter, page: current - 1, size}),
-              }}
             />
-          </PageState>
-        </Card>
+          }
+          pagination={{
+            mode: 'page',
+            current: (users.data?.page ?? submittedFilter.page ?? 0) + 1,
+            pageSize: users.data?.size ?? submittedFilter.size ?? 20,
+            total: users.data?.total ?? 0,
+            showSizeChanger: true,
+            onChange: (current, size) => setSubmittedFilter({...submittedFilter, page: current - 1, size}),
+          }}
+        />
       )}
 
       <Modal

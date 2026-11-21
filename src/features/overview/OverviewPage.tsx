@@ -3,10 +3,11 @@ import {Card, Col, Row, Statistic} from 'antd'
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {overviewApi} from './overview.api'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 
 export const OverviewPage = () => {
-    const {status, about} = useRbac3Authorization()
+  const {embedded} = useEmbeddedWorkbench()
+  const {status, about} = useRbac3Authorization()
   const { effectiveTenantId } = useFeatureTenantContext()
   const api = overviewApi(useFeatureApi())
   const query = useQuery({
@@ -15,13 +16,15 @@ export const OverviewPage = () => {
     enabled: status === 'READY',
   })
   return (
-    <Card title="权限治理概览">
-      <PageState loading={query.isPending} error={query.error} empty={!query.data}>
-        <Row gutter={16}>
-          <Col span={8}><Statistic title="Auth Version" value={about?.authVersion ?? 0} /></Col>
-          <Col span={8}><Statistic title="Policy Version" value={about?.policyVersion ?? 0} /></Col>
-        </Row>
-      </PageState>
-    </Card>
+    <div style={{width: '100%'}}>
+      <Card title={!embedded ? '权限治理概览' : undefined}>
+        <PageState loading={query.isPending} error={query.error} empty={!query.data}>
+          <Row gutter={16}>
+            <Col span={8}><Statistic title="Auth Version" value={about?.authVersion ?? 0} /></Col>
+            <Col span={8}><Statistic title="Policy Version" value={about?.policyVersion ?? 0} /></Col>
+          </Row>
+        </PageState>
+      </Card>
+    </div>
   )
 }

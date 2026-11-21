@@ -2,13 +2,14 @@ import {useWritableFields} from '../../permissions/FieldCatalog'
 import {ResourceGuard} from '../../permissions/ResourceGuard'
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {Alert, Button, Card, Descriptions, Drawer, Form, Input, InputNumber, Popconfirm, Space, Table, Tag} from 'antd'
+import {Alert, Button, Descriptions, Drawer, Form, Input, InputNumber, Popconfirm, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {applicationApi, type TenantApplicationView} from './application.api'
 
 export const ApplicationListPage = () => {
+  const {embedded} = useEmbeddedWorkbench()
   const {status} = useRbac3Authorization()
   const {effectiveTenantId} = useFeatureTenantContext()
   const api = applicationApi(useFeatureApi())
@@ -56,59 +57,73 @@ export const ApplicationListPage = () => {
   const mutationError = admit.error ?? changeStatus.error ?? remove.error
 
   return (
-    <Card title="租户应用授权">
-      <ResourceGuard resourceKey="tianquan-jianshen.button.ApplicationListPage.manage1">
-        <Form disabled={!admitWritable} layout="inline" onFinish={(values) => admitWritable && admit.mutate(values)} style={{marginBottom: 16}}>
-          <Form.Item name="ddcApplicationId" rules={[{required: true, whitespace: true}]}>
-            <Input placeholder="Tianshu Application ID" />
-          </Form.Item>
-          <Form.Item name="displayPriority" initialValue={0}>
-            <InputNumber min={0} precision={0} />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" loading={admit.isPending}>纳入租户授权</Button>
-        </Form>
-      </ResourceGuard>
-      {mutationError && (
-        <Alert
-          type="error"
-          showIcon
-          title={mutationError instanceof Error ? mutationError.message : '租户应用操作失败'}
-          action={<Button size="small" onClick={() => {void query.refetch()}}>刷新</Button>}
-          style={{marginBottom: 16}}
-        />
-      )}
-      <PageState loading={query.isPending} error={query.error} empty={query.data?.length === 0}>
-        <Table<TenantApplicationView>
-          rowKey="applicationId"
-          dataSource={query.data ?? []}
-          pagination={false}
-          scroll={{x: 'max-content'}}
-          columns={[
-            {title: '业务编码', dataIndex: 'businessCode'},
-            {title: '应用编码', dataIndex: 'applicationCode'},
-            {title: '应用名称', dataIndex: 'applicationName'},
-            {title: '状态', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag>},
-            {title: '优先级', dataIndex: 'displayPriority'},
-            {title: '版本', dataIndex: 'version'},
-            {
-              title: '操作',
-              render: (_value: unknown, application: TenantApplicationView) => (
-                <Space>
-                  <Button size="small" onClick={() => setSelectedApplication(application)}>查看详情</Button>
-                  <ResourceGuard resourceKey="tianquan-jianshen.button.ApplicationListPage.manage2">
-                    <Button size="small" disabled={!statusWritable} loading={changeStatus.isPending} onClick={() => changeStatus.mutate(application)}>
-                      {application.status === 'ACTIVE' ? '暂停' : '启用'}
-                    </Button>
-                    <Popconfirm title="确认移除租户应用授权？" okText="确认移除" cancelText="取消" onConfirm={() => remove.mutate(application)}>
-                      <Button size="small" danger loading={remove.isPending}>移除</Button>
-                    </Popconfirm>
-                  </ResourceGuard>
-                </Space>
-              ),
-            },
-          ]}
-        />
-      </PageState>
+    <>
+      <WorkspaceList
+        ariaLabel="租户应用授权"
+        filters={
+          <ResourceGuard resourceKey="tianquan-jianshen.button.ApplicationListPage.manage1">
+            <Form disabled={!admitWritable} layout="inline" onFinish={(values) => admitWritable && admit.mutate(values)}>
+              <Form.Item name="ddcApplicationId" rules={[{required: true, whitespace: true}]}>
+                <Input placeholder="Tianshu Application ID" />
+              </Form.Item>
+              <Form.Item name="displayPriority" initialValue={0}>
+                <InputNumber min={0} precision={0} />
+              </Form.Item>
+              <Button type="primary" htmlType="submit" loading={admit.isPending}>纳入租户授权</Button>
+            </Form>
+          </ResourceGuard>
+        }
+        toolbar={
+          <Space direction="vertical" size={8} style={{width: '100%'}}>
+            {!embedded && <Typography.Text strong>租户应用授权</Typography.Text>}
+            {mutationError && (
+              <Alert
+                type="error"
+                showIcon
+                title={mutationError instanceof Error ? mutationError.message : '租户应用操作失败'}
+                action={<Button size="small" onClick={() => {void query.refetch()}}>刷新</Button>}
+              />
+            )}
+          </Space>
+        }
+        pageState={{
+          loading: query.isPending,
+          error: query.error,
+          empty: query.data?.length === 0,
+        }}
+        table={
+          <Table<TenantApplicationView>
+            rowKey="applicationId"
+            dataSource={query.data ?? []}
+            pagination={false}
+            scroll={{x: 'max-content'}}
+            columns={[
+              {title: '业务编码', dataIndex: 'businessCode'},
+              {title: '应用编码', dataIndex: 'applicationCode'},
+              {title: '应用名称', dataIndex: 'applicationName'},
+              {title: '状态', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag>},
+              {title: '优先级', dataIndex: 'displayPriority'},
+              {title: '版本', dataIndex: 'version'},
+              {
+                title: '操作',
+                render: (_value: unknown, application: TenantApplicationView) => (
+                  <Space>
+                    <Button size="small" onClick={() => setSelectedApplication(application)}>查看详情</Button>
+                    <ResourceGuard resourceKey="tianquan-jianshen.button.ApplicationListPage.manage2">
+                      <Button size="small" disabled={!statusWritable} loading={changeStatus.isPending} onClick={() => changeStatus.mutate(application)}>
+                        {application.status === 'ACTIVE' ? '暂停' : '启用'}
+                      </Button>
+                      <Popconfirm title="确认移除租户应用授权？" okText="确认移除" cancelText="取消" onConfirm={() => remove.mutate(application)}>
+                        <Button size="small" danger loading={remove.isPending}>移除</Button>
+                      </Popconfirm>
+                    </ResourceGuard>
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        }
+      />
       <Drawer
         title={selectedApplication ? `租户应用：${selectedApplication.applicationName}` : ''}
         open={selectedApplication !== null}
@@ -137,6 +152,6 @@ export const ApplicationListPage = () => {
           )}
         </PageState>
       </Drawer>
-    </Card>
+    </>
   )
 }

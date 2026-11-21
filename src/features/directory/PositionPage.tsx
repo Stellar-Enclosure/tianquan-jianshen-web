@@ -2,10 +2,10 @@ import {useWritableFields} from '../../permissions/FieldCatalog'
 import {ResourceGuard} from '../../permissions/ResourceGuard'
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {Alert, Button, Card, Descriptions, Drawer, Form, Input, Popconfirm, Space, Table, Tag, Typography} from 'antd'
+import {Alert, Button, Descriptions, Drawer, Form, Input, Popconfirm, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
 import {useSearchParams} from 'react-router-dom'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {directoryApi, type PositionCommand, type PositionUpdateCommand, type PositionView} from './directory.api'
 
@@ -21,6 +21,7 @@ interface PositionFormValues {
 const normalizeNullable = (value?: string) => value?.trim() || null
 
 export const PositionPage = () => {
+    const {embedded} = useEmbeddedWorkbench()
     const {status} = useRbac3Authorization()
     const {effectiveTenantId} = useFeatureTenantContext()
     const api = directoryApi(useFeatureApi())
@@ -109,86 +110,93 @@ export const PositionPage = () => {
     const mutationError = save.error ?? archive.error
 
     return (
-        <Card
-            title="岗位"
-            extra={(
-                <Space>
-                    <Button onClick={() => {void query.refetch()}}>刷新</Button>
-                    <ResourceGuard resourceKey="tianquan-jianshen.button.PositionPage.manage1">
-                        <Button type="primary" onClick={openCreate}>新增岗位</Button>
-                    </ResourceGuard>
-                </Space>
-            )}
-        >
-            <Typography.Paragraph type="secondary">
-                维护 Tianquan-Jianshen 手工岗位；每个岗位必须绑定有效组织，租户和授权范围由当前上下文确定。
-            </Typography.Paragraph>
-            <Form
-                form={filterForm}
-                layout="inline"
-                initialValues={{orgUnitId}}
-                onFinish={(values) => {
-                    const nextOrgUnitId = values.orgUnitId?.trim()
-                    setSearchParams(nextOrgUnitId ? {orgUnitId: nextOrgUnitId} : {})
-                }}
-                style={{marginBottom: 16}}
-            >
-                <Form.Item name="orgUnitId" label="组织 ID">
-                    <Input allowClear placeholder="留空查看全部岗位" />
-                </Form.Item>
-                <Form.Item>
-                    <Space>
-                        <Button type="primary" htmlType="submit">查询</Button>
-                        <Button onClick={() => {
-                            filterForm.resetFields()
-                            setSearchParams({})
-                        }}>重置</Button>
+        <>
+            <WorkspaceList
+                ariaLabel="岗位"
+                filters={
+                    <Form
+                        form={filterForm}
+                        layout="inline"
+                        initialValues={{orgUnitId}}
+                        onFinish={(values) => {
+                            const nextOrgUnitId = values.orgUnitId?.trim()
+                            setSearchParams(nextOrgUnitId ? {orgUnitId: nextOrgUnitId} : {})
+                        }}
+                    >
+                        <Form.Item name="orgUnitId" label="组织 ID">
+                            <Input allowClear placeholder="留空查看全部岗位" />
+                        </Form.Item>
+                        <Form.Item>
+                            <Space>
+                                <Button type="primary" htmlType="submit">查询</Button>
+                                <Button onClick={() => {
+                                    filterForm.resetFields()
+                                    setSearchParams({})
+                                }}>重置</Button>
+                            </Space>
+                        </Form.Item>
+                    </Form>
+                }
+                toolbar={
+                    <Space direction="vertical" size={8} style={{width: '100%'}}>
+                        <Space style={{width: '100%', justifyContent: 'space-between'}} wrap>
+                            {!embedded ? <Typography.Text strong>岗位</Typography.Text> : <span />}
+                            <Space>
+                                <Button onClick={() => {void query.refetch()}}>刷新</Button>
+                                <ResourceGuard resourceKey="tianquan-jianshen.button.PositionPage.manage1">
+                                    <Button type="primary" onClick={openCreate}>新增岗位</Button>
+                                </ResourceGuard>
+                            </Space>
+                        </Space>
+                        <Typography.Text type="secondary">
+                            维护 Tianquan-Jianshen 手工岗位；每个岗位必须绑定有效组织，租户和授权范围由当前上下文确定。
+                        </Typography.Text>
+                        {mutationError && (
+                            <Alert
+                                type="error"
+                                showIcon
+                                title={mutationError instanceof Error ? mutationError.message : String(mutationError)}
+                                action={<Button size="small" onClick={() => {void query.refetch()}}>刷新</Button>}
+                            />
+                        )}
                     </Space>
-                </Form.Item>
-            </Form>
-            {mutationError && (
-                <Alert
-                    type="error"
-                    showIcon
-                    title={mutationError instanceof Error ? mutationError.message : String(mutationError)}
-                    action={<Button size="small" onClick={() => {void query.refetch()}}>刷新</Button>}
-                    style={{marginBottom: 16}}
-                />
-            )}
-            <PageState
-                loading={query.isPending}
-                error={query.error}
-                empty={query.data?.length === 0}
-                emptyDescription="暂无岗位"
-                onRetry={() => {void query.refetch()}}
-            >
-                <Table<PositionView>
-                    rowKey="positionId"
-                    dataSource={query.data ?? []}
-                    pagination={false}
-                    scroll={{x: 'max-content'}}
-                    onRow={(position) => ({
-                        onClick: () => openDetails(position),
-                        style: {cursor: 'pointer'},
-                    })}
-                    columns={[
-                        {title: '岗位名称', dataIndex: 'name'},
-                        {title: '岗位编码', dataIndex: 'code'},
-                        {title: '组织 ID', dataIndex: 'orgUnitId'},
-                        {title: '状态', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag>},
-                        {title: '版本', dataIndex: 'version'},
-                        {
-                            title: '操作',
-                            render: (_value: unknown, position: PositionView) => (
-                                <Button size="small" onClick={(event) => {
-                                    event.stopPropagation()
-                                    openDetails(position)
-                                }}>查看详情</Button>
-                            ),
-                        },
-                    ]}
-                />
-            </PageState>
+                }
+                pageState={{
+                    loading: query.isPending,
+                    error: query.error,
+                    empty: query.data?.length === 0,
+                    emptyDescription: '暂无岗位',
+                    onRetry: () => {void query.refetch()},
+                }}
+                table={
+                    <Table<PositionView>
+                        rowKey="positionId"
+                        dataSource={query.data ?? []}
+                        pagination={false}
+                        scroll={{x: 'max-content'}}
+                        onRow={(position) => ({
+                            onClick: () => openDetails(position),
+                            style: {cursor: 'pointer'},
+                        })}
+                        columns={[
+                            {title: '岗位名称', dataIndex: 'name'},
+                            {title: '岗位编码', dataIndex: 'code'},
+                            {title: '组织 ID', dataIndex: 'orgUnitId'},
+                            {title: '状态', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag>},
+                            {title: '版本', dataIndex: 'version'},
+                            {
+                                title: '操作',
+                                render: (_value: unknown, position: PositionView) => (
+                                    <Button size="small" onClick={(event) => {
+                                        event.stopPropagation()
+                                        openDetails(position)
+                                    }}>查看详情</Button>
+                                ),
+                            },
+                        ]}
+                    />
+                }
+            />
             <Drawer
                 title={editingPosition ? `编辑岗位：${editingPosition.name}` : selectedPosition ? `岗位：${selectedPosition.name}` : '新增岗位'}
                 open={editorOpen || selectedPosition !== null}
@@ -251,6 +259,6 @@ export const PositionPage = () => {
                     </Space>
                 ) : null}
             </Drawer>
-        </Card>
+        </>
     )
 }

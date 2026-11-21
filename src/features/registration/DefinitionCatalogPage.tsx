@@ -1,9 +1,9 @@
 import {useWritableFieldKeys} from '../../permissions/FieldCatalog'
 import {inputFields} from '../../permissions/fieldReferences'
 import {useQuery, useMutation, useQueryClient} from '@tanstack/react-query'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {catalogScopeKey} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
-import {Alert, Button, Card, Descriptions, Drawer, Modal, Select, Space, Table, Tag, Typography} from 'antd'
+import {Alert, Button, Descriptions, Drawer, Modal, Select, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
 import {ResourceGuard} from '../../permissions/ResourceGuard'
 import {useFeatureApi} from '../shared/FeatureApi'
@@ -12,7 +12,21 @@ import {registrationApi, type CatalogScope, type Definition, type DefinitionKind
 import {ManifestDiffView} from './ManifestDiffPage'
 import {useCurrentAuthorizationRefresh} from '../auth/CurrentAuthorizationProvider'
 
-const CatalogForScope = ({target, kind, type}: {target: CatalogScope; kind: DefinitionKind; type?: string}) => {
+const CatalogForScope = ({
+  ariaLabel,
+  embedded,
+  scope,
+  target,
+  kind,
+  type,
+}: {
+  ariaLabel: string
+  embedded: boolean
+  scope: ReturnType<typeof useCatalogScope>
+  target: CatalogScope
+  kind: DefinitionKind
+  type?: string
+}) => {
   const api = registrationApi(useFeatureApi())
   const refreshAuthorization = useCurrentAuthorizationRefresh()
   const queryClient = useQueryClient()
@@ -52,19 +66,38 @@ const CatalogForScope = ({target, kind, type}: {target: CatalogScope; kind: Defi
   const rows = (definitions.data?.definitions ?? []).filter(value => !type || value.type === type)
   const currentProducerKind = producers.data?.producers.find(value => value.producerId === detail.data?.identity.producerId)?.kind
   return <>
-    <Alert type="info" showIcon title="定义与策略由代码生成，只读展示" description="注册不会自动授予角色；停用、退场和所有权转移使用独立的版本校验命令。" style={{marginBottom: 16}} />
-    {governance.error && <Alert type="error" showIcon title={governance.error instanceof Error ? governance.error.message : '治理操作失败'}
-      description={(governance.error as {status?: number}).status === 409 ? '版本已变化，已重新加载。请重新检查影响并提交。' : undefined} />}
-    <PageState loading={definitions.isPending} error={definitions.error} empty={rows.length === 0} emptyDescription="当前页没有匹配定义"
-      onRetry={() => void definitions.refetch()}>
-      <Table<Definition> rowKey="id" dataSource={rows} pagination={false} onRow={value => ({onClick: () => setSelectedId(value.id), style: {cursor: 'pointer'}})} columns={[
-        {title: kind === 'PERMISSION' ? '权限字符' : '稳定 Key', dataIndex: 'key'}, {title: '类型', dataIndex: 'type'},
-        {title: '固定语义', dataIndex: 'meaning'}, {title: '生产者', dataIndex: 'producerId'}, {title: '治理状态', dataIndex: 'state', render: value => <Tag>{value}</Tag>},
-        {title: '版本', dataIndex: 'version'}, {title: '当前激活来源', dataIndex: 'activeProducerVersion', render: value => value ?? '未激活'},
-      ]} />
-    </PageState>
-    <Space style={{marginTop: 16}}><Button disabled={afterId === '0'} onClick={() => setAfterId('0')}>首页</Button>
-      <Button disabled={!definitions.data?.nextAfterId} onClick={() => setAfterId(definitions.data!.nextAfterId!)}>下一页</Button></Space>
+    <WorkspaceList
+      ariaLabel={ariaLabel}
+      filters={<CatalogScopePicker value={scope} />}
+      toolbar={
+        <Space direction="vertical" size={8} style={{width: '100%'}}>
+          {!embedded && <Typography.Text strong>{ariaLabel}</Typography.Text>}
+          <Alert type="info" showIcon title="定义与策略由代码生成，只读展示" description="注册不会自动授予角色；停用、退场和所有权转移使用独立的版本校验命令。" />
+          {governance.error && <Alert type="error" showIcon title={governance.error instanceof Error ? governance.error.message : '治理操作失败'}
+            description={(governance.error as {status?: number}).status === 409 ? '版本已变化，已重新加载。请重新检查影响并提交。' : undefined} />}
+        </Space>
+      }
+      pageState={{
+        loading: definitions.isPending,
+        error: definitions.error,
+        empty: rows.length === 0,
+        emptyDescription: '当前页没有匹配定义',
+        onRetry: () => void definitions.refetch(),
+      }}
+      table={
+        <Table<Definition> rowKey="id" dataSource={rows} pagination={false} onRow={value => ({onClick: () => setSelectedId(value.id), style: {cursor: 'pointer'}})} columns={[
+          {title: kind === 'PERMISSION' ? '权限字符' : '稳定 Key', dataIndex: 'key'}, {title: '类型', dataIndex: 'type'},
+          {title: '固定语义', dataIndex: 'meaning'}, {title: '生产者', dataIndex: 'producerId'}, {title: '治理状态', dataIndex: 'state', render: value => <Tag>{value}</Tag>},
+          {title: '版本', dataIndex: 'version'}, {title: '当前激活来源', dataIndex: 'activeProducerVersion', render: value => value ?? '未激活'},
+        ]} />
+      }
+      footer={
+        <Space>
+          <Button disabled={afterId === '0'} onClick={() => setAfterId('0')}>首页</Button>
+          <Button disabled={!definitions.data?.nextAfterId} onClick={() => setAfterId(definitions.data!.nextAfterId!)}>下一页</Button>
+        </Space>
+      }
+    />
     <Drawer title={detail.data?.identity.key ?? '定义详情'} open={Boolean(selectedId)} onClose={() => {setSelectedId(undefined); setReview(null)}} size="large">
       <PageState loading={detail.isPending} error={detail.error} empty={!detail.data} onRetry={() => void detail.refetch()}>
         {detail.data && <Space orientation="vertical" style={{width: '100%'}}>
@@ -97,7 +130,18 @@ const CatalogForScope = ({target, kind, type}: {target: CatalogScope; kind: Defi
   </>
 }
 export const DefinitionCatalogPage = ({title, kind, type}: {title: string; kind: DefinitionKind; type?: string}) => {
+  const {embedded} = useEmbeddedWorkbench()
   const scope = useCatalogScope()
-  return <Card title={title}><CatalogScopePicker value={scope} />
-    {scope.selected && <CatalogForScope key={catalogScopeKey(scope.selected.scope)} target={scope.selected.scope} kind={kind} type={type} />}</Card>
+  if (!scope.selected) {
+    return (
+      <WorkspaceList
+        ariaLabel={title}
+        filters={<CatalogScopePicker value={scope} />}
+        toolbar={!embedded ? <Typography.Text strong>{title}</Typography.Text> : undefined}
+        pageState={{loading: scope.query.isPending, error: scope.query.error, empty: true, emptyDescription: '请选择权限目录范围'}}
+        table={<Table rowKey="id" dataSource={[]} pagination={false} columns={[]} />}
+      />
+    )
+  }
+  return <CatalogForScope key={catalogScopeKey(scope.selected.scope)} ariaLabel={title} embedded={embedded} scope={scope} target={scope.selected.scope} kind={kind} type={type} />
 }

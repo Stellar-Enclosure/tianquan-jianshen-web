@@ -1,12 +1,13 @@
 import {useQuery} from '@tanstack/react-query'
-import {Button, Card, Descriptions, Drawer, Input, Space, Table, Tag, Typography} from 'antd'
+import {Button, Descriptions, Drawer, Input, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {businessApi, type BusinessCatalogView} from './business.api'
 
 export const BusinessCatalogPage = () => {
+  const {embedded} = useEmbeddedWorkbench()
   const {status} = useRbac3Authorization()
   const {effectiveTenantId} = useFeatureTenantContext()
   const api = businessApi(useFeatureApi())
@@ -26,54 +27,65 @@ export const BusinessCatalogPage = () => {
   })
 
   return (
-    <Card title="业务目录">
-      <Typography.Paragraph type="secondary">
-        查看 Tianshu 注册的业务域及其应用目录；目录由平台侧投影，当前页面不直接访问 Tianshu。
-      </Typography.Paragraph>
-      <Space.Compact block style={{marginBottom: 16}}>
-        <Input
-          aria-label="业务目录搜索"
-          placeholder="业务编码或名称"
-          value={draftKeyword}
-          onChange={(event) => setDraftKeyword(event.target.value)}
-          onPressEnter={() => setKeyword(draftKeyword.trim())}
-        />
-        <Button type="primary" onClick={() => setKeyword(draftKeyword.trim())}>查询</Button>
-        <Button onClick={() => {setDraftKeyword(''); setKeyword('')}}>重置</Button>
-      </Space.Compact>
-      <PageState
-        loading={businesses.isPending}
-        error={businesses.error}
-        empty={businesses.data?.length === 0}
-        emptyDescription="暂无业务目录"
-        onRetry={() => {void businesses.refetch()}}
-      >
-        <Table<BusinessCatalogView>
-          rowKey="ddcBusinessId"
-          dataSource={businesses.data ?? []}
-          pagination={false}
-          scroll={{x: 'max-content'}}
-          onRow={(business) => ({
-            onClick: () => setSelectedBusiness(business),
-            style: {cursor: 'pointer'},
-          })}
-          columns={[
-            {title: '业务 ID', dataIndex: 'ddcBusinessId'},
-            {title: '业务编码', dataIndex: 'bizCode'},
-            {title: '业务名称', dataIndex: 'bizName'},
-            {title: '状态', dataIndex: 'enabled', render: (value: boolean) => <Tag>{value ? '启用' : '停用'}</Tag>},
-            {
-              title: '操作',
-              render: (_value: unknown, business: BusinessCatalogView) => (
-                <Button size="small" onClick={(event) => {
-                  event.stopPropagation()
-                  setSelectedBusiness(business)
-                }}>查看应用</Button>
-              ),
-            },
-          ]}
-        />
-      </PageState>
+    <>
+      <WorkspaceList
+        ariaLabel="业务目录"
+        filters={
+          <Space.Compact block>
+            <Input
+              aria-label="业务目录搜索"
+              placeholder="业务编码或名称"
+              value={draftKeyword}
+              onChange={(event) => setDraftKeyword(event.target.value)}
+              onPressEnter={() => setKeyword(draftKeyword.trim())}
+            />
+            <Button type="primary" onClick={() => setKeyword(draftKeyword.trim())}>查询</Button>
+            <Button onClick={() => {setDraftKeyword(''); setKeyword('')}}>重置</Button>
+          </Space.Compact>
+        }
+        toolbar={
+          <Space direction="vertical" size={4} style={{width: '100%'}}>
+            {!embedded && <Typography.Text strong>业务目录</Typography.Text>}
+            <Typography.Text type="secondary">
+              查看 Tianshu 注册的业务域及其应用目录；目录由平台侧投影，当前页面不直接访问 Tianshu。
+            </Typography.Text>
+          </Space>
+        }
+        pageState={{
+          loading: businesses.isPending,
+          error: businesses.error,
+          empty: businesses.data?.length === 0,
+          emptyDescription: '暂无业务目录',
+          onRetry: () => {void businesses.refetch()},
+        }}
+        table={
+          <Table<BusinessCatalogView>
+            rowKey="ddcBusinessId"
+            dataSource={businesses.data ?? []}
+            pagination={false}
+            scroll={{x: 'max-content'}}
+            onRow={(business) => ({
+              onClick: () => setSelectedBusiness(business),
+              style: {cursor: 'pointer'},
+            })}
+            columns={[
+              {title: '业务 ID', dataIndex: 'ddcBusinessId'},
+              {title: '业务编码', dataIndex: 'bizCode'},
+              {title: '业务名称', dataIndex: 'bizName'},
+              {title: '状态', dataIndex: 'enabled', render: (value: boolean) => <Tag>{value ? '启用' : '停用'}</Tag>},
+              {
+                title: '操作',
+                render: (_value: unknown, business: BusinessCatalogView) => (
+                  <Button size="small" onClick={(event) => {
+                    event.stopPropagation()
+                    setSelectedBusiness(business)
+                  }}>查看应用</Button>
+                ),
+              },
+            ]}
+          />
+        }
+      />
       <Drawer
         title={selectedBusiness ? `业务：${selectedBusiness.bizName}` : ''}
         open={selectedBusiness !== null}
@@ -113,6 +125,6 @@ export const BusinessCatalogPage = () => {
           </Space>
         )}
       </Drawer>
-    </Card>
+    </>
   )
 }

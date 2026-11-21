@@ -1,10 +1,17 @@
-import { describe, expect, it } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { createElement } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   validatePageDescriptor,
   validateRelativeRoutePath,
+  type WorkbenchHost,
+  type WorkbenchPort,
 } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import { snapshotContext } from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
-import { permissionSnapshotFixture } from '../test/authorization'
+import { ApplicationRouter } from '../app/router'
+import { FeatureApiProvider, type FeatureApiClient } from '../features/shared/FeatureApi'
+import { TestAuthorizationProvider, createAuthorizationFixtureClient, permissionSnapshotFixture } from '../test/authorization'
 import {
   buildJianshenCatalogPages,
   canAccessJianshenRoute,
@@ -112,5 +119,217 @@ describe('jianshenWorkbenchRoutes', () => {
     expect(buildJianshenCatalogPages(empty, emptyBinding)).toEqual([])
     const policyRoute = jianshenWorkbenchRoutes.find((route) => route.pattern === '/iam/policies')!
     expect(canAccessJianshenRoute(empty, emptyBinding, policyRoute)).toBe(false)
+  })
+})
+
+describe('jianshen directory and resource workbench views', () => {
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it('renders directory, application, business, and catalog views in WorkspaceList regions when embedded and blocks unauthorized access', async () => {
+    const scope = {
+      catalogScopeId: '101',
+      tenantId: '42',
+      businessCode: 'xingyuan',
+      applicationCode: 'tianquan-jianshen',
+      namespaceCode: 'default',
+      environment: 'test',
+    }
+    const feature: FeatureApiClient = {
+      request: async <T,>(requestPath: string) => {
+        if (requestPath === '/api/tianquan-jianshen/v1/iam/runtime') return {} as T
+        if (requestPath === '/api/tianquan-jianshen/v1/iam/users') {
+          return {
+            items: [{ userId: 'u-1', identitySub: 'alice', status: 'ACTIVE', authVersion: 1 }],
+            page: 0,
+            size: 20,
+            total: 1,
+          } as T
+        }
+        if (requestPath === '/api/tianquan-jianshen/v1/iam/organizations') {
+          return [{
+            orgUnitId: '1001',
+            snapshotId: null,
+            type: 'DEPARTMENT',
+            code: 'hq',
+            name: '总部',
+            parentId: null,
+            path: 'hq',
+            depth: 0,
+            status: 'ACTIVE',
+            version: 1,
+          }] as T
+        }
+        if (requestPath === '/api/tianquan-jianshen/v1/iam/positions') {
+          return [{
+            positionId: '2001',
+            snapshotId: null,
+            code: 'ops',
+            name: '运营主管',
+            orgUnitId: '1001',
+            status: 'ACTIVE',
+            validFrom: '2026-01-01T00:00:00Z',
+            version: 1,
+          }] as T
+        }
+        if (requestPath === '/api/tianquan-jianshen/v1/iam/tenant-applications') {
+          return [{
+            applicationId: 'app-1',
+            ddcBusinessId: 'b-1',
+            ddcApplicationId: 'a-1',
+            businessCode: 'xingyuan',
+            applicationCode: 'orders',
+            applicationName: 'Orders',
+            status: 'ACTIVE',
+            displayPriority: 0,
+            version: 1,
+          }] as T
+        }
+        if (requestPath === '/api/tianquan-jianshen/v1/iam/businesses') {
+          return [{
+            ddcBusinessId: 'b-1',
+            bizCode: 'xingyuan',
+            bizName: '星元',
+            enabled: true,
+          }] as T
+        }
+        if (requestPath === '/api/tianquan-jianshen/v1/permission-catalogs/scopes') {
+          return { scopes: [{ scope, applicationId: '71', producerCount: 1 }], nextAfterId: null } as T
+        }
+        if (requestPath.includes('/definitions')) {
+          return {
+            target: scope,
+            kind: 'PERMISSION',
+            definitions: [{
+              id: 'def-1',
+              key: 'orders:read',
+              type: 'PERMISSION',
+              meaning: 'Read orders',
+              producerId: 'orders-java',
+              state: 'ACTIVE',
+              version: '1',
+              activeProducerVersion: '1.0',
+            }],
+            nextAfterId: null,
+          } as T
+        }
+        return {} as T
+      },
+    }
+
+    const ports: WorkbenchPort[] = []
+    const host: WorkbenchHost = {
+      attach: (port) => {
+        ports.push(port)
+        return { ok: true }
+      },
+      reportCatalog: () => ({ ok: true }),
+      requestNavigation: () => ({ ok: true }),
+    }
+    const sdk = createAuthorizationFixtureClient({
+      subject: 'mario',
+      tenantId: '42',
+      permissionCodes: [...FULL_PERMISSIONS],
+    })
+
+    const { container } = render(
+      createElement(
+        QueryClientProvider,
+        { client: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+        createElement(
+          TestAuthorizationProvider,
+          { client: sdk },
+          createElement(
+            FeatureApiProvider,
+            { client: feature },
+            createElement(ApplicationRouter, { embedded: true, workbenchHost: host }),
+          ),
+        ),
+      ),
+    )
+
+    await waitFor(() => expect(ports).toHaveLength(1))
+    const port = ports[0]!
+
+    await port.present({
+      mode: 'show',
+      navigationId: 1,
+      tabKey: '["tianquan-jianshen","tianquan-jianshen.page.overview"]',
+      target: { path: '/iam/overview', search: '' },
+      signal: new AbortController().signal,
+    })
+    await waitFor(() => expect(screen.getByText('Auth Version')).toBeInTheDocument())
+
+    await port.present({
+      mode: 'show',
+      navigationId: 2,
+      tabKey: '["tianquan-jianshen","tianquan-jianshen.page.directory-organizations"]',
+      target: { path: '/iam/organizations', search: '' },
+      signal: new AbortController().signal,
+    })
+    await waitFor(() => expect(screen.getByText('总部')).toBeInTheDocument())
+
+    const workspaceListPaths = [
+      '/iam/users',
+      '/iam/positions',
+      '/iam/tenant-applications',
+      '/iam/resources',
+      '/iam/fields',
+      '/iam/permissions',
+      '/iam/businesses',
+    ] as const
+    for (let i = 0; i < workspaceListPaths.length; i += 1) {
+      const path = workspaceListPaths[i]!
+      await port.present({
+        mode: 'show',
+        navigationId: 10 + i,
+        tabKey: `["tianquan-jianshen","${path}"]`,
+        target: { path, search: '' },
+        signal: new AbortController().signal,
+      })
+      await waitFor(() => expect(container.querySelector('[data-region="table"]')).toBeInTheDocument())
+    }
+
+    cleanup()
+    const deniedPorts: WorkbenchPort[] = []
+    const deniedHost: WorkbenchHost = {
+      attach: (next) => {
+        deniedPorts.push(next)
+        return { ok: true }
+      },
+      reportCatalog: () => ({ ok: true }),
+      requestNavigation: () => ({ ok: true }),
+    }
+    const deniedSdk = createAuthorizationFixtureClient({
+      subject: 'mario',
+      tenantId: '42',
+      permissionCodes: ['system:runtime:read'],
+    })
+    render(
+      createElement(
+        QueryClientProvider,
+        { client: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+        createElement(
+          TestAuthorizationProvider,
+          { client: deniedSdk },
+          createElement(
+            FeatureApiProvider,
+            { client: feature },
+            createElement(ApplicationRouter, { embedded: true, workbenchHost: deniedHost }),
+          ),
+        ),
+      ),
+    )
+    await waitFor(() => expect(deniedPorts).toHaveLength(1))
+    await deniedPorts[0]!.present({
+      mode: 'show',
+      navigationId: 99,
+      tabKey: '["tianquan-jianshen","tianquan-jianshen.page.directory-users"]',
+      target: { path: '/iam/users', search: '' },
+      signal: new AbortController().signal,
+    })
+    await waitFor(() => expect(screen.getByText('无权访问此页面')).toBeInTheDocument())
   })
 })

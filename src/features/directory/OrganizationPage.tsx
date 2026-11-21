@@ -5,7 +5,7 @@ import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Descriptions, Drawer, Form, Input, Popconfirm, Select, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
 import {useSearchParams} from 'react-router-dom'
-import {PageState} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {PageState, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {directoryApi, type OrganizationCommand, type OrganizationUpdateCommand, type OrganizationView} from './directory.api'
 
@@ -27,6 +27,7 @@ const organizationTypes = [
 const normalizeNullable = (value?: string) => value?.trim() || null
 
 export const OrganizationPage = () => {
+    const {embedded} = useEmbeddedWorkbench()
     const {status} = useRbac3Authorization()
     const {effectiveTenantId} = useFeatureTenantContext()
     const api = directoryApi(useFeatureApi())
@@ -121,8 +122,9 @@ export const OrganizationPage = () => {
     const mutationError = save.error ?? archive.error
 
     return (
+        <div style={{width: '100%'}}>
         <Card
-            title="组织"
+            title={!embedded ? '组织' : undefined}
             extra={(
                 <Space>
                     <Button onClick={() => {void query.refetch()}}>刷新</Button>
@@ -270,5 +272,6 @@ export const OrganizationPage = () => {
                 ) : null}
             </Drawer>
         </Card>
+        </div>
     )
 }
