@@ -1,6 +1,6 @@
 import {Alert, Button, Card, Typography} from 'antd'
 import {useEffect, useRef, useState} from 'react'
-import {useLocation} from 'react-router-dom'
+import {useInRouterContext, useLocation} from 'react-router-dom'
 import {gatewayAuth} from './gatewayAuth'
 
 interface LoginPageProps {
@@ -8,8 +8,13 @@ interface LoginPageProps {
   readonly onAuthorized?: () => Promise<void>
   readonly startAuthorization?: (signal: AbortSignal) => Promise<boolean>
 }
-export const LoginPage = ({notice, onAuthorized, startAuthorization}: LoginPageProps) => {
-  const {pathname} = useLocation()
+
+const LoginPageInner = ({
+  notice,
+  onAuthorized,
+  startAuthorization,
+  pathname,
+}: LoginPageProps & { readonly pathname: string }) => {
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)
   const pending = useRef<AbortController | undefined>(undefined)
@@ -50,3 +55,14 @@ export const LoginPage = ({notice, onAuthorized, startAuthorization}: LoginPageP
     </main>
   )
 }
+
+const RouterLoginPage = (props: LoginPageProps) => {
+  const {pathname} = useLocation()
+  return <LoginPageInner {...props} pathname={pathname} />
+}
+
+export const LoginPage = (props: LoginPageProps) => (
+  useInRouterContext()
+    ? <RouterLoginPage {...props} />
+    : <LoginPageInner {...props} pathname={window.location.pathname} />
+)
