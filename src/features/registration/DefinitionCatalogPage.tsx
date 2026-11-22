@@ -2,8 +2,9 @@ import {useWritableFieldKeys} from '../../permissions/FieldCatalog'
 import {inputFields} from '../../permissions/fieldReferences'
 import {useQuery, useMutation, useQueryClient} from '@tanstack/react-query'
 import {PageState, WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
-import {catalogScopeKey} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
-import {Alert, Button, Descriptions, Drawer, Modal, Select, Space, Table, Tag, Typography} from 'antd'
+import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {catalogScopeKey, permissionContextKey} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
+import {Alert, Button, Descriptions, Drawer, Input, Modal, Select, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
 import {ResourceGuard} from '../../permissions/ResourceGuard'
 import {useFeatureApi} from '../shared/FeatureApi'
@@ -19,6 +20,7 @@ const CatalogForScope = ({
   target,
   kind,
   type,
+  contextKey,
 }: {
   ariaLabel: string
   embedded: boolean
@@ -26,12 +28,15 @@ const CatalogForScope = ({
   target: CatalogScope
   kind: DefinitionKind
   type?: string
+  contextKey: string
 }) => {
   const api = registrationApi(useFeatureApi())
   const refreshAuthorization = useCurrentAuthorizationRefresh()
   const queryClient = useQueryClient()
-  const key = ['permission-catalogs', catalogScopeKey(target)]
-  const [afterId, setAfterId] = useState('0')
+  const key = ['permission-catalogs', catalogScopeKey(target), contextKey]
+  const [cursors, setCursors] = useState(['0'])
+  const afterId = cursors.at(-1)!
+  const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string>()
   const [review, setReview] = useState<{action: GovernanceCommand['action']; identityId: string; version: string; key: string; impact: string} | null>(null)
   const action = review?.action
@@ -63,16 +68,26 @@ const CatalogForScope = ({
       await queryClient.invalidateQueries({queryKey: key})
     }
   }})
-  const rows = (definitions.data?.definitions ?? []).filter(value => !type || value.type === type)
+  const indexed = definitions.data?.definitions ?? []
+  const rows = indexed.filter(value => (!type || value.type === type) && (!search
+    || value.key.toLowerCase().includes(search) || value.meaning?.toLowerCase().includes(search)))
+  const nextCursor = definitions.data?.nextAfterId
+  const hasNext = Boolean(nextCursor && !cursors.includes(nextCursor))
   const currentProducerKind = producers.data?.producers.find(value => value.producerId === detail.data?.identity.producerId)?.kind
   return <>
     <WorkspaceList
       ariaLabel={ariaLabel}
-      filters={<CatalogScopePicker value={scope} />}
+      filters={<Space wrap><CatalogScopePicker value={scope} />
+        <Input.Search aria-label="搜索当前目录页" placeholder="在当前页查找 Key 或语义" allowClear
+          onSearch={value => setSearch(value.trim().toLowerCase())} />
+      </Space>}
       toolbar={
         <Space direction="vertical" size={8} style={{width: '100%'}}>
           {!embedded && <Typography.Text strong>{ariaLabel}</Typography.Text>}
           <Alert type="info" showIcon title="定义与策略由代码生成，只读展示" description="注册不会自动授予角色；停用、退场和所有权转移使用独立的版本校验命令。" />
+          {definitions.data && <Typography.Text type="secondary">
+            本页匹配 {rows.length} 条，索引返回 {indexed.length} 条{hasNext ? '，后续还有目录页' : ''}
+          </Typography.Text>}
           {governance.error && <Alert type="error" showIcon title={governance.error instanceof Error ? governance.error.message : '治理操作失败'}
             description={(governance.error as {status?: number}).status === 409 ? '版本已变化，已重新加载。请重新检查影响并提交。' : undefined} />}
         </Space>
@@ -89,12 +104,16 @@ const CatalogForScope = ({
           {title: kind === 'PERMISSION' ? '权限字符' : '稳定 Key', dataIndex: 'key'}, {title: '类型', dataIndex: 'type'},
           {title: '固定语义', dataIndex: 'meaning'}, {title: '生产者', dataIndex: 'producerId'}, {title: '治理状态', dataIndex: 'state', render: value => <Tag>{value}</Tag>},
           {title: '版本', dataIndex: 'version'}, {title: '当前激活来源', dataIndex: 'activeProducerVersion', render: value => value ?? '未激活'},
+          {title: '操作', render: (_value, row) => <Button type="link" onClick={() => setSelectedId(row.id)}>查看详情</Button>},
         ]} />
       }
       footer={
         <Space>
-          <Button disabled={afterId === '0'} onClick={() => setAfterId('0')}>首页</Button>
-          <Button disabled={!definitions.data?.nextAfterId} onClick={() => setAfterId(definitions.data!.nextAfterId!)}>下一页</Button>
+          <Button disabled={cursors.length === 1 || definitions.isFetching} onClick={() => setCursors(['0'])}>首页</Button>
+          <Button disabled={cursors.length === 1 || definitions.isFetching} onClick={() => setCursors(history => history.slice(0, -1))}>上一页</Button>
+          <Button disabled={!hasNext || definitions.isFetching} onClick={() => {
+            if (nextCursor && hasNext) setCursors(history => [...history, nextCursor])
+          }}>下一页</Button>
         </Space>
       }
     />
@@ -103,9 +122,14 @@ const CatalogForScope = ({
         {detail.data && <Space orientation="vertical" style={{width: '100%'}}>
           <Descriptions column={1} bordered size="small"><Descriptions.Item label="稳定 ID">{detail.data.identity.id}</Descriptions.Item>
             <Descriptions.Item label="治理版本">{detail.data.identity.version}</Descriptions.Item><Descriptions.Item label="来源">{detail.data.identity.producerId}</Descriptions.Item>
-            <Descriptions.Item label="激活来源版本">{active ?? '未激活'}</Descriptions.Item></Descriptions>
+            <Descriptions.Item label="激活来源版本">{active ?? '未激活'}</Descriptions.Item>
+            <Descriptions.Item label="治理状态">{detail.data.identity.state}</Descriptions.Item>
+            <Descriptions.Item label="目录修订">{producers.data?.activeRevision ?? '未读取'}</Descriptions.Item></Descriptions>
           <Typography.Title level={5}>当前激活定义（只读）</Typography.Title>
-          <pre style={{whiteSpace: 'pre-wrap', overflowWrap: 'anywhere'}}>{JSON.stringify(detail.data.activeDefinition, null, 2)}</pre>
+          {detail.data.activeDefinition
+            ? <><pre style={{whiteSpace: 'pre-wrap', overflowWrap: 'anywhere'}}>{JSON.stringify(detail.data.activeDefinition, null, 2)}</pre>
+                <Typography.Text type="secondary">按当前定义展示引用，其他目录分页未纳入反向引用。</Typography.Text></>
+            : <Alert type="info" title="当前没有可用的激活定义" />}
           {diff.data && <ManifestDiffView value={diff.data} />}
           {diff.error && <Alert type="error" title="当前来源影响读取失败" />}
           <Space wrap>
@@ -131,8 +155,10 @@ const CatalogForScope = ({
 }
 export const DefinitionCatalogPage = ({title, kind, type}: {title: string; kind: DefinitionKind; type?: string}) => {
   const {embedded} = useEmbeddedWorkbench()
-  const scope = useCatalogScope()
-  if (!scope.selected) {
+  const {status, binding} = useRbac3Authorization()
+  const contextKey = status === 'READY' && binding ? permissionContextKey(binding) : undefined
+  const scope = useCatalogScope(undefined, contextKey !== undefined, contextKey)
+  if (!scope.selected || !contextKey) {
     return (
       <WorkspaceList
         ariaLabel={title}
@@ -143,5 +169,5 @@ export const DefinitionCatalogPage = ({title, kind, type}: {title: string; kind:
       />
     )
   }
-  return <CatalogForScope key={catalogScopeKey(scope.selected.scope)} ariaLabel={title} embedded={embedded} scope={scope} target={scope.selected.scope} kind={kind} type={type} />
+  return <CatalogForScope key={JSON.stringify([contextKey, kind, type, catalogScopeKey(scope.selected.scope)])} contextKey={contextKey} ariaLabel={title} embedded={embedded} scope={scope} target={scope.selected.scope} kind={kind} type={type} />
 }

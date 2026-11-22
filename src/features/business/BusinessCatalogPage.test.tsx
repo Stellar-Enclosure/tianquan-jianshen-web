@@ -29,6 +29,7 @@ describe('business catalog page', () => {
       return [{ddcApplicationId: 'application-1', ddcBusinessId: 'business-1', bizCode: 'trade', appCode: 'orders', appName: '订单应用', applicationEnabled: true, businessEnabled: true}] as T
     })
     render(<BusinessCatalogPage />, {wrapper: wrapper(request as unknown as FeatureApiClient['request'])})
+    expect(await screen.findByText('当前返回 1 项业务')).toBeInTheDocument()
 
     await waitFor(() => expect(screen.getByText('交易域')).toBeInTheDocument())
     fireEvent.click(screen.getByText('交易域'))

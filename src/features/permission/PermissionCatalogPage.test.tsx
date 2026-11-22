@@ -2,7 +2,7 @@ vi.mock('../../permissions/FieldCatalog', () => ({useWritableFields: () => true,
 import {cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {PermissionCatalogPage} from './PermissionCatalogPage'
-import {catalogWrapper, defaultCatalogResponse, target} from '../../test/catalog'
+import {catalogWrapper, defaultCatalogResponse, definition, target} from '../../test/catalog'
 afterEach(cleanup)
 describe('code-owned permission definitions', () => {
   it('reads the server-provisioned scope and immutable definition without manual creation', async () => {
@@ -40,4 +40,14 @@ it('does not silently replace the version that was reviewed in an open governanc
   await test.queryClient.invalidateQueries({predicate: query => query.queryKey.includes('definition')})
   await screen.findByText('定义或影响已变化，请关闭并重新审查')
   expect(screen.getByRole('button', {name: 'OK'})).toBeDisabled()
+})
+
+it('labels a known permission with no active detail instead of rendering a null rule', async () => {
+  const test = catalogWrapper((path, options) => path.includes('/definitions/PERMISSION/')
+    ? {identity: {...definition, activeProducerVersion: null}, activeProducerVersion: null, activeDefinition: null}
+    : defaultCatalogResponse(path, options))
+  render(<PermissionCatalogPage />, test)
+  fireEvent.click(await screen.findByText('order:read'))
+  expect(await screen.findByText('当前没有可用的激活定义')).toBeInTheDocument()
+  expect(screen.queryByText('null')).not.toBeInTheDocument()
 })

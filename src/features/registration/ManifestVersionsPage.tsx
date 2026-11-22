@@ -4,9 +4,10 @@ import {gatewayAuth} from '../auth/gatewayAuth'
 import {loadActivationIntent, storeActivationIntent, type ActivationIntent} from './activationIntent'
 import {useMutation, useQueries, useQuery, useQueryClient} from '@tanstack/react-query'
 import {PageState, WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
-import {allowsSnapshotRequirement, catalogScopeKey} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
+import {allowsSnapshotRequirement, catalogScopeKey, permissionContextKey} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import {Alert, Button, Card, Checkbox, Descriptions, Select, Space, Table, Tag, Typography} from 'antd'
 import {useEffect, useState} from 'react'
+import {Link} from 'react-router-dom'
 import {useResourcePermission} from '../../permissions/ResourceGuard'
 import {useFeatureApi} from '../shared/FeatureApi'
 import {useCurrentAuthorizationRefresh} from '../auth/CurrentAuthorizationProvider'
@@ -18,11 +19,11 @@ const eligible = (candidate: Candidate | undefined, now = Date.now()) => candida
   && Date.parse(candidate.qualification.expiresAt) > now
 const unknownOutcome = (error: unknown) => !(error as {status?: number})?.status || ((error as {status?: number}).status ?? 0) >= 500
 
-const VersionsForScope = ({target}: {target: CatalogScope}) => {
+const VersionsForScope = ({target, contextKey}: {target: CatalogScope; contextKey: string}) => {
   const api = registrationApi(useFeatureApi())
   const refreshAuthorization = useCurrentAuthorizationRefresh()
   const queryClient = useQueryClient()
-  const key = ['permission-catalogs', catalogScopeKey(target)]
+  const key = ['permission-catalogs', catalogScopeKey(target), contextKey]
   const [selected, setSelected] = useState<Record<string, Candidate>>({})
   const [before, setBefore] = useState<Record<string, string>>({})
   const authorization = useRbac3Authorization()
@@ -53,10 +54,17 @@ const VersionsForScope = ({target}: {target: CatalogScope}) => {
     onError: async (error) => {
       setReviewedKey(null)
       if (unknownOutcome(error)) {setCanRetry(false)}
-      else {retain(null); setSelected({}); await queryClient.invalidateQueries({queryKey: key})}
+      else {retain(null); await queryClient.invalidateQueries({queryKey: key})}
     }})
   const expansion = diffs.some(value => value.data?.diff.authorizationExpansion)
-  const ready = members.length > 0 && members.every((member, index) => eligible(selected[member.producerId], now)
+  const matchingQualification = (producerId: string, index: number) => {
+    const chosen = selected[producerId]
+    const fresh = candidates[index].data?.candidates.find(item => item.producerVersion === chosen?.producerVersion)
+    return eligible(chosen, now) && eligible(fresh, now)
+      && fresh?.qualification?.qualificationId === chosen?.qualification?.qualificationId
+  }
+  const ready = members.length > 0 && !producers.isError && !producers.isFetching && members.every((member, index) => matchingQualification(member.producerId, index)
+    && !candidates[index].isError && !candidates[index].isFetching
     && !diffs[index].isFetching && !diffs[index].error && diffs[index].data?.expectedActiveRevision === producers.data?.activeRevision
     && diffs[index].data?.producerVersion === selected[member.producerId]?.producerVersion && diffs[index].data?.diff.conflicts.length === 0)
   const reviewKey = ready ? JSON.stringify({expectedActiveRevision: producers.data!.activeRevision,
@@ -103,14 +111,20 @@ const VersionsForScope = ({target}: {target: CatalogScope}) => {
             const candidate = candidates[index].data?.candidates.find(value => value.producerVersion === version)
             if (candidate) {setSelected(value => ({...value, [producer.producerId]: candidate})); setReviewedKey(null)}
           }} options={candidates[index].data?.candidates.map(value => ({value: value.producerVersion,
-            label: `${value.producerVersion} · ${value.state}${value.qualification ? ' · 已有部署资格' : ' · 无部署资格'}`, disabled: !eligible(value)}))} />
+            label: `${value.producerVersion} · ${value.state}${value.qualification ? Date.parse(value.qualification.expiresAt) > now ? ' · 已有部署资格' : ' · 资格已过期' : ' · 无部署资格'}`, disabled: !eligible(value)}))} />
           <Button disabled={!candidates[index].data?.nextBeforeVersion} onClick={() => setBefore(value => ({...value, [producer.producerId]: candidates[index].data!.nextBeforeVersion!}))}>更早候选</Button>
           <Button disabled={!before[producer.producerId] || before[producer.producerId] === '0'} onClick={() => setBefore(value => ({...value, [producer.producerId]: '0'}))}>最新候选</Button>
         </Space>
         {candidates[index].error && <Alert type="error" title="候选读取失败" />}
         {selected[producer.producerId] && <Typography.Paragraph type="secondary" style={{marginTop: 12}}>
           构建 {selected[producer.producerId].buildId} · commit {selected[producer.producerId].commit} · 部署 {selected[producer.producerId].qualification?.deploymentId}
-          · 资格到期 {selected[producer.producerId].qualification?.expiresAt}</Typography.Paragraph>}
+          · 资格到期 {selected[producer.producerId].qualification?.expiresAt}
+          <br />制品摘要 {selected[producer.producerId].qualification?.artifactDigest}
+          <br /><Link to={`/iam/manifest-diff?${new URLSearchParams({
+            catalogScopeId: target.catalogScopeId, producerId: producer.producerId,
+            producerVersion: selected[producer.producerId].producerVersion,
+          })}`}>打开该候选差异</Link>
+        </Typography.Paragraph>}
         {diffs[index].data && <ManifestDiffView value={diffs[index].data!} />}
         {diffs[index].error && <Alert type="error" title="当前差异读取失败，不能激活" />}
       </Card>)}
@@ -123,6 +137,9 @@ const VersionsForScope = ({target}: {target: CatalogScope}) => {
     {pending && <Alert type="warning" showIcon title="激活结果尚未确认" description={<Space orientation="vertical">
       <Typography.Text>操作 ID：{pending.command.operationId}。先查询原操作，不新建操作覆盖未知结果。</Typography.Text>
       <Button loading={checkOperation.isPending} onClick={() => checkOperation.mutate()}>查询该操作</Button>
+      {checkOperation.error && <Typography.Text type="secondary">
+        {canRetry ? '未找到原操作回执，符合当前资格时可重试同一请求' : '原操作回执暂不可读取'}
+      </Typography.Text>}
       {canRetry && <Button loading={activate.isPending} disabled={!canActivate || (pending.requiresManage && !canApproveExpansion) || pending.qualificationsExpireAt.some(value => Date.parse(value) <= now)} onClick={retryOriginal}>重试原激活请求</Button>}
     </Space>} />}
     <Card size="small" title="激活历史">
@@ -146,8 +163,10 @@ const VersionsForScope = ({target}: {target: CatalogScope}) => {
 }
 export const ManifestVersionsPage = () => {
   const {embedded} = useEmbeddedWorkbench()
-  const scope = useCatalogScope()
-  if (!scope.selected) {
+  const {status, binding} = useRbac3Authorization()
+  const contextKey = status === 'READY' && binding ? permissionContextKey(binding) : undefined
+  const scope = useCatalogScope(undefined, contextKey !== undefined, contextKey)
+  if (!scope.selected || !contextKey) {
     return (
       <WorkspaceList
         ariaLabel="Manifest 候选与激活历史"
@@ -162,7 +181,8 @@ export const ManifestVersionsPage = () => {
     <div style={{width: '100%'}}>
       <Card title={!embedded ? 'Manifest 候选与激活历史' : undefined}>
         <CatalogScopePicker value={scope} />
-        <VersionsForScope key={catalogScopeKey(scope.selected.scope)} target={scope.selected.scope} />
+        <VersionsForScope key={JSON.stringify([contextKey, catalogScopeKey(scope.selected.scope)])}
+          contextKey={contextKey} target={scope.selected.scope} />
       </Card>
     </div>
   )

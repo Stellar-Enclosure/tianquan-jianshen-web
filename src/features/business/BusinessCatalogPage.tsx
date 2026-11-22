@@ -2,13 +2,19 @@ import {useQuery} from '@tanstack/react-query'
 import {Button, Descriptions, Drawer, Input, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
+import {permissionContextKey} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import {PageState, WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {businessApi, type BusinessCatalogView} from './business.api'
 
 export const BusinessCatalogPage = () => {
+  const {status, binding} = useRbac3Authorization()
+  const context = status === 'READY' && binding ? permissionContextKey(binding) : null
+  return <BusinessCatalog key={context} context={context} />
+}
+
+const BusinessCatalog = ({context}: {context: string | null}) => {
   const {embedded} = useEmbeddedWorkbench()
-  const {status} = useRbac3Authorization()
   const {effectiveTenantId} = useFeatureTenantContext()
   const api = businessApi(useFeatureApi())
   const tenant = effectiveTenantId ?? 'none'
@@ -16,14 +22,14 @@ export const BusinessCatalogPage = () => {
   const [keyword, setKeyword] = useState('')
   const [selectedBusiness, setSelectedBusiness] = useState<BusinessCatalogView | null>(null)
   const businesses = useQuery({
-    queryKey: ['tianquan-jianshen', 'business-catalog', tenant, keyword],
+    queryKey: ['tianquan-jianshen', 'business-catalog', context, tenant, keyword],
     queryFn: () => api.businesses(keyword),
-    enabled: status === 'READY',
+    enabled: context !== null,
   })
   const applications = useQuery({
-    queryKey: ['tianquan-jianshen', 'business-applications', tenant, selectedBusiness?.ddcBusinessId ?? 'none'],
+    queryKey: ['tianquan-jianshen', 'business-applications', context, tenant, selectedBusiness?.ddcBusinessId ?? 'none'],
     queryFn: () => api.applications(selectedBusiness!.ddcBusinessId),
-    enabled: status === 'READY' && selectedBusiness !== null,
+    enabled: context !== null && selectedBusiness !== null,
   })
 
   return (
@@ -46,16 +52,17 @@ export const BusinessCatalogPage = () => {
         toolbar={
           <Space direction="vertical" size={4} style={{width: '100%'}}>
             {!embedded && <Typography.Text strong>业务目录</Typography.Text>}
-            <Typography.Text type="secondary">
-              查看 Tianshu 注册的业务域及其应用目录；目录由平台侧投影，当前页面不直接访问 Tianshu。
-            </Typography.Text>
+            <Space wrap>
+              <Button disabled={!context || businesses.isFetching} onClick={() => {void businesses.refetch()}}>刷新业务目录</Button>
+              {businesses.data && <Typography.Text type="secondary">当前返回 {businesses.data.length} 项业务</Typography.Text>}
+            </Space>
           </Space>
         }
         pageState={{
           loading: businesses.isPending,
           error: businesses.error,
           empty: businesses.data?.length === 0,
-          emptyDescription: '暂无业务目录',
+          emptyDescription: keyword ? '未匹配当前查询' : '暂无业务目录',
           onRetry: () => {void businesses.refetch()},
         }}
         table={

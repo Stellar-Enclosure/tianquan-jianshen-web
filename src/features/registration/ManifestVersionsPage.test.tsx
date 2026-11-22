@@ -53,7 +53,7 @@ describe('qualified catalog activation', () => {
     let request: ActivationCommand | undefined
     const test = catalogWrapper((path, options) => {
       if (path.endsWith('/activations')) {request = options.body as ActivationCommand; throw new ApiError('response lost', 503, 'UNAVAILABLE')}
-      if (path.endsWith('/versions') && options.query?.operationId) return descriptor(String(options.query.operationId))
+      if (path.endsWith('/versions') && options.query?.operationId) throw new ApiError('receipt unavailable', 503, 'UNAVAILABLE')
       return defaultCatalogResponse(path, options)
     })
     render(<ManifestVersionsPage />, test)
@@ -64,6 +64,8 @@ describe('qualified catalog activation', () => {
     await screen.findByText('激活结果尚未确认')
     fireEvent.click(screen.getByRole('button', {name: '查询该操作'}))
     await waitFor(() => expect(test.request).toHaveBeenCalledWith('/api/v1/permission-catalogs/versions', {query: {...target, operationId: request!.operationId}}))
+    expect(await screen.findByText('原操作回执暂不可读取')).toBeInTheDocument()
+    expect(screen.queryByRole('button', {name: '重试原激活请求'})).not.toBeInTheDocument()
     expect(vi.mocked(test.request).mock.calls.filter(([path]) => path.endsWith('/activations'))).toHaveLength(1)
   })
 })

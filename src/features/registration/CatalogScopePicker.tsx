@@ -3,7 +3,7 @@ import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianqu
 import {Alert, Button, Select, Space, Typography} from 'antd'
 import {useState} from 'react'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
-import {registrationApi} from './registration.api'
+import {registrationApi, type ScopeEntry} from './registration.api'
 
 export const useCatalogScope = (applicationId?: string, enabled = true, contextKey?: string) => {
   const {status} = useRbac3Authorization()
@@ -17,7 +17,7 @@ export const useCatalogScope = (applicationId?: string, enabled = true, contextK
   const selected = scopes.find(value => value.scope.catalogScopeId === selectedId) ?? scopes[0]
   return {query, scopes, selected, setSelectedId}
 }
-export const CatalogScopePicker = ({value, onSelect}: {value: ReturnType<typeof useCatalogScope>; onSelect?: (id: string) => void}) => <Space wrap style={{marginBottom: 16}}>
+export const CatalogScopePicker = ({value, onSelect}: {value: Omit<ReturnType<typeof useCatalogScope>, 'selected'> & {selected?: ScopeEntry}; onSelect?: (id: string) => void}) => <Space wrap style={{marginBottom: 16}}>
   <Select aria-label="权限目录范围" placeholder="选择服务端已配置的范围" style={{minWidth: 380}} loading={value.query.isPending}
     value={value.selected?.scope.catalogScopeId} onChange={onSelect ?? value.setSelectedId}
     options={value.scopes.map(entry => ({value: entry.scope.catalogScopeId,

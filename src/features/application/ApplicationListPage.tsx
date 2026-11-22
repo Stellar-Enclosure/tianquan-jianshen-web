@@ -6,26 +6,36 @@ import {Alert, Button, Descriptions, Drawer, Form, Input, InputNumber, Popconfir
 import {useState} from 'react'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {PageState, WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {permissionContextKey} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import {applicationApi, type TenantApplicationView} from './application.api'
 
+const APPLICATION_PAGE_SIZE = 20
+
 export const ApplicationListPage = () => {
+  const {status, binding} = useRbac3Authorization()
+  const contextKey = status === 'READY' && binding ? permissionContextKey(binding) : null
+  return <ApplicationList key={contextKey} contextKey={contextKey} />
+}
+
+const ApplicationList = ({contextKey}: {contextKey: string | null}) => {
   const {embedded} = useEmbeddedWorkbench()
-  const {status} = useRbac3Authorization()
   const {effectiveTenantId} = useFeatureTenantContext()
   const api = applicationApi(useFeatureApi())
   const queryClient = useQueryClient()
+  const [filterText, setFilterText] = useState('')
+  const [page, setPage] = useState(1)
   const [selectedApplication, setSelectedApplication] = useState<TenantApplicationView | null>(null)
-  const queryKey = ['tianquan-jianshen', 'tenant-applications', effectiveTenantId ?? 'none']
-  const detailKey = ['tianquan-jianshen', 'tenant-application', effectiveTenantId ?? 'none', selectedApplication?.applicationId ?? 'none']
+  const queryKey = ['tianquan-jianshen', 'tenant-applications', contextKey, effectiveTenantId ?? 'none']
+  const detailKey = ['tianquan-jianshen', 'tenant-application', contextKey, effectiveTenantId ?? 'none', selectedApplication?.applicationId ?? 'none']
   const query = useQuery({
     queryKey,
     queryFn: api.tenantApplications,
-    enabled: status === 'READY',
+    enabled: contextKey !== null,
   })
   const detail = useQuery({
     queryKey: detailKey,
     queryFn: () => api.application(selectedApplication!.applicationId),
-    enabled: status === 'READY' && selectedApplication !== null,
+    enabled: contextKey !== null && selectedApplication !== null,
   })
   const refresh = async () => {
     await Promise.all([
@@ -55,27 +65,35 @@ export const ApplicationListPage = () => {
     },
   })
   const mutationError = admit.error ?? changeStatus.error ?? remove.error
+  const available = query.data ?? []
+  const filtered = available.filter(row => !filterText || [row.applicationName, row.applicationCode, row.businessCode]
+    .some(value => value.toLowerCase().includes(filterText)))
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / APPLICATION_PAGE_SIZE)))
 
   return (
     <>
       <WorkspaceList
         ariaLabel="租户应用授权"
-        filters={
-          <ResourceGuard resourceKey="tianquan-jianshen.button.ApplicationListPage.manage1">
-            <Form disabled={!admitWritable} layout="inline" onFinish={(values) => admitWritable && admit.mutate(values)}>
-              <Form.Item name="ddcApplicationId" rules={[{required: true, whitespace: true}]}>
-                <Input placeholder="Tianshu Application ID" />
-              </Form.Item>
-              <Form.Item name="displayPriority" initialValue={0}>
-                <InputNumber min={0} precision={0} />
-              </Form.Item>
-              <Button type="primary" htmlType="submit" loading={admit.isPending}>纳入租户授权</Button>
-            </Form>
-          </ResourceGuard>
-        }
+        filters={<Input.Search aria-label="租户应用搜索" placeholder="应用名称、应用编码或业务编码" allowClear
+          onSearch={value => {setFilterText(value.trim().toLowerCase()); setPage(1)}} />}
         toolbar={
           <Space direction="vertical" size={8} style={{width: '100%'}}>
             {!embedded && <Typography.Text strong>租户应用授权</Typography.Text>}
+            <Space wrap>
+              <Button onClick={() => {void refresh()}} disabled={!contextKey || query.isFetching}>刷新应用</Button>
+              {query.data && <Typography.Text type="secondary">当前匹配 {filtered.length} / 已加载 {available.length}</Typography.Text>}
+            </Space>
+            <ResourceGuard resourceKey="tianquan-jianshen.button.ApplicationListPage.manage1">
+              <Form disabled={!admitWritable} layout="inline" onFinish={(values) => admitWritable && admit.mutate(values)}>
+                <Form.Item name="ddcApplicationId" rules={[{required: true, whitespace: true}]}>
+                  <Input placeholder="Tianshu Application ID" />
+                </Form.Item>
+                <Form.Item name="displayPriority" initialValue={0}>
+                  <InputNumber min={0} precision={0} />
+                </Form.Item>
+                <Button type="primary" htmlType="submit" loading={admit.isPending}>纳入租户授权</Button>
+              </Form>
+            </ResourceGuard>
             {mutationError && (
               <Alert
                 type="error"
@@ -89,12 +107,14 @@ export const ApplicationListPage = () => {
         pageState={{
           loading: query.isPending,
           error: query.error,
-          empty: query.data?.length === 0,
+          empty: filtered.length === 0,
+          onRetry: () => void query.refetch(),
         }}
+        pagination={{mode: 'page', current: currentPage, pageSize: APPLICATION_PAGE_SIZE, total: filtered.length, onChange: setPage}}
         table={
           <Table<TenantApplicationView>
             rowKey="applicationId"
-            dataSource={query.data ?? []}
+            dataSource={filtered.slice((currentPage - 1) * APPLICATION_PAGE_SIZE, currentPage * APPLICATION_PAGE_SIZE)}
             pagination={false}
             scroll={{x: 'max-content'}}
             columns={[
