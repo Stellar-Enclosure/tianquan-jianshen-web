@@ -108,6 +108,28 @@ describe('jianshenWorkbenchRoutes', () => {
     expect(matchJianshenRoute('/iam/tenants')).toBeNull()
   })
 
+  it('separates instance tabs for two roles and two users and guards the hidden links', () => {
+    const authorized = permissionSnapshotFixture({permissionCodes: [...FULL_PERMISSIONS]})
+    const expired = {...authorized, snapshotExpiresAt: '2025-01-01T00:00:00Z'}
+    const binding = snapshotContext(authorized, 1)
+    const paths = [
+      ['/iam/roles/9007199254740993/permissions', 'roleId', '9007199254740993'],
+      ['/iam/roles/9007199254740994/permissions', 'roleId', '9007199254740994'],
+      ['/iam/users/9107199254740993/role-assignments', 'userId', '9107199254740993'],
+      ['/iam/users/9107199254740994/role-assignments', 'userId', '9107199254740994'],
+    ] as const
+    const identities = paths.map(([path, param, id]) => {
+      const matched = matchJianshenRoute(path)!
+      expect(matched.route.identityParams).toEqual([param])
+      expect(matched.params).toEqual({[param]: id})
+      expect(matched.route.hideFromNav).toBe(true)
+      expect(canAccessJianshenRoute(authorized, binding, matched.route)).toBe(true)
+      expect(canAccessJianshenRoute(expired, binding, matched.route)).toBe(false)
+      return JSON.stringify([matched.route.pageId, matched.params[param]])
+    })
+    expect(new Set(identities).size).toBe(4)
+  })
+
   it('filters catalog pages by real RBAC snapshot permissions without escalating access', () => {
     const limited = permissionSnapshotFixture({
       permissionCodes: ['system:runtime:read', 'system:audit:read', 'system:authorization-runtime:read'],
@@ -188,7 +210,7 @@ describe('jianshen directory and resource workbench views', () => {
             target: scope,
             version: '1',
             catalogVersion: '1',
-            permissions: [{ permissionCode: 'orders:read', validFrom: null, validTo: null }],
+            permissions: [{ permissionCode: 'orders:read', validFrom: '2026-01-01T00:00:00Z', validTo: null }],
           } as T
         }
         if (requestPath.includes('/producers')) {
@@ -435,7 +457,7 @@ describe('jianshen directory and resource workbench views', () => {
       environment: 'test',
     }
     const feature: FeatureApiClient = {
-      request: async <T,>(requestPath: string) => {
+      request: async <T,>(requestPath: string, options?: Parameters<FeatureApiClient['request']>[1]) => {
         if (requestPath.endsWith('/permission-catalogs/scopes')) {
           return { scopes: [{ scope, applicationId: '71', producerCount: 1 }], nextAfterId: null } as T
         }
@@ -470,26 +492,27 @@ describe('jianshen directory and resource workbench views', () => {
           return { roleId: id, roleFamily: [id], activationRoots: [id], effectiveFamilyRisk: 'LOW', permissionCount: 1, conflicts: [] } as T
         }
         if (requestPath.includes('/roles/') && requestPath.endsWith('/permissions')) {
-          return { roleId: 'role-1', target: scope, version: '1', catalogVersion: '1', permissions: [{ permissionCode: 'orders:read', validFrom: null, validTo: null }] } as T
+          return { roleId: 'role-1', target: scope, version: '1', catalogVersion: '1', permissions: [{ permissionCode: 'orders:read', validFrom: '2026-01-01T00:00:00Z', validTo: null }] } as T
         }
         if (requestPath.includes('/definitions')) {
           return {
             target: scope,
-            kind: 'PERMISSION',
-            definitions: [{
+            kind: options?.query?.kind,
+            definitions: options?.query?.kind === 'RESOURCE' ? [] : [{
               id: 'def-1',
               key: 'orders:write',
-              type: 'PERMISSION',
+              type: null,
               meaning: 'Write orders',
               producerId: 'orders-java',
               state: 'ACTIVE',
               version: '1',
-              activeProducerVersion: '1.0',
+              activeProducerVersion: '1',
             }],
             nextAfterId: null,
           } as T
         }
-        if (requestPath.includes('/producers')) return { target: scope, activeRevision: '1', producers: [] } as T
+        if (requestPath.includes('/producers')) return {target: scope, activeRevision: '1',
+          producers: [{producerId: 'orders-java', kind: 'JAVA', activeProducerVersion: '1'}]} as T
         if (requestPath.includes('/versions')) return { currentRevision: '1', versions: [] } as T
         if (requestPath.includes('/assignments')) return [] as T
         if (requestPath.includes('/users/user-1')) return { userId: 'user-1', identitySub: 'u1', status: 'ACTIVE', authVersion: 3 } as T
@@ -514,7 +537,7 @@ describe('jianshen directory and resource workbench views', () => {
     const sdk = createAuthorizationFixtureClient({
       subject: 'mario',
       tenantId: '42',
-      permissionCodes: [...FULL_PERMISSIONS, 'system:role-permission:grant', 'system:permission-catalog:activate'],
+      permissionCodes: [...FULL_PERMISSIONS, 'system:role-permission:manage', 'system:permission-catalog:activate'],
     })
 
     const { container } = render(
@@ -553,7 +576,8 @@ describe('jianshen directory and resource workbench views', () => {
       target: { path: '/iam/roles/role-1/permissions', search: '' },
       signal: new AbortController().signal,
     })
-    await waitFor(() => expect(screen.getByText('orders:write')).toBeInTheDocument())
+    fireEvent.click(await screen.findByRole('tab', {name: '权限字符'}))
+    await waitFor(() => expect(screen.getByRole('checkbox', {name: /orders:write/})).toBeEnabled())
     expect(port.checkLeave({ reason: 'close', tabKey: rolePermTab1 })).toEqual(
       expect.objectContaining({ ok: true, dirty: false }),
     )
