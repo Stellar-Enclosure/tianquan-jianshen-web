@@ -10,6 +10,7 @@ import {
   fieldRoleEditDetailVOStatus,
   fieldRoleEditDetailVOVersion,
   permissionSystemRolePermissionRead,
+  permissionSystemAuthorizationRuntimeRead,
 } from '../../.generated/permissions/backend-references'
 import {rolePermissionButtons, rolePermissionFieldReferences} from '../features/role/rolePermissionResources'
 import {defineResources, defineMessages, defineResourceReferences} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
@@ -110,7 +111,7 @@ export const resources = defineResources([
     "requirement": {
       "mode": "ALL",
       "codes": [
-        "system:runtime:read"
+        permissionSystemAuthorizationRuntimeRead
       ]
     },
     "i18n": {
@@ -531,7 +532,7 @@ export const resources = defineResources([
     "requirement": {
       "mode": "ALL",
       "codes": [
-        "system:authorization-runtime:read"
+        permissionSystemAuthorizationRuntimeRead
       ]
     },
     "i18n": {

@@ -48,7 +48,6 @@ const SPEC_JIANSHEN_PATTERNS = [
 ] as const
 
 const FULL_PERMISSIONS = [
-  'system:runtime:read',
   'system:user:read',
   'system:organization:read',
   'system:position:read',
@@ -93,6 +92,22 @@ describe('jianshenWorkbenchRoutes', () => {
     expect(descriptors.some((item) => item.pattern === '/iam/users/:userId/role-assignments')).toBe(false)
   })
 
+  it('uses the backend runtime permission for both overview and runtime and rejects the obsolete alias', () => {
+    const canonical = permissionSnapshotFixture({permissionCodes: ['system:authorization-runtime:read']})
+    const canonicalBinding = snapshotContext(canonical, 1)
+    expect(buildJianshenCatalogPages(canonical, canonicalBinding).map(page => page.pattern)).toEqual([
+      '/iam/overview', '/iam/diagnostics/runtime',
+    ])
+    const obsolete = permissionSnapshotFixture({permissionCodes: ['system:runtime:read']})
+    const obsoleteBinding = snapshotContext(obsolete, 1)
+    expect(buildJianshenCatalogPages(obsolete, obsoleteBinding)).toEqual([])
+    for (const pattern of ['/iam/overview', '/iam/diagnostics/runtime']) {
+      const route = jianshenWorkbenchRoutes.find(candidate => candidate.pattern === pattern)!
+      expect(canAccessJianshenRoute(canonical, canonicalBinding, route)).toBe(true)
+      expect(canAccessJianshenRoute(obsolete, obsoleteBinding, route)).toBe(false)
+    }
+  })
+
   it('matches static and parameterized routes cleanly and preserves identity params', () => {
     const rolePerm = matchJianshenRoute('/iam/roles/9007199254740993/permissions')
     expect(rolePerm?.route.pattern).toBe('/iam/roles/:roleId/permissions')
@@ -132,7 +147,7 @@ describe('jianshenWorkbenchRoutes', () => {
 
   it('filters catalog pages by real RBAC snapshot permissions without escalating access', () => {
     const limited = permissionSnapshotFixture({
-      permissionCodes: ['system:runtime:read', 'system:audit:read', 'system:authorization-runtime:read'],
+      permissionCodes: ['system:audit:read', 'system:authorization-runtime:read'],
     })
     const limitedBinding = snapshotContext(limited, 1)
     const descriptors = buildJianshenCatalogPages(limited, limitedBinding)
@@ -419,7 +434,7 @@ describe('jianshen directory and resource workbench views', () => {
     const deniedSdk = createAuthorizationFixtureClient({
       subject: 'mario',
       tenantId: '42',
-      permissionCodes: ['system:runtime:read'],
+      permissionCodes: ['system:authorization-runtime:read'],
     })
     render(
       createElement(

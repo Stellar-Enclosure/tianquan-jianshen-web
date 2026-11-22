@@ -57,7 +57,7 @@ describe('application router', () => {
     })
     try {
       render(<ApplicationRouter embedded />, {
-        wrapper: wrapper(['system:runtime:read', 'system:user:read', 'system:role:read'], '/iam/overview'),
+        wrapper: wrapper(['system:authorization-runtime:read', 'system:user:read', 'system:role:read'], '/iam/overview'),
       })
       await waitFor(() => expect(screen.getByText('IAM')).toBeInTheDocument())
       fireEvent.click(screen.getByText('目录'))
@@ -90,7 +90,7 @@ describe('application router', () => {
   })
 
   it('chooses the stable first accessible local route when no default is usable', () => {
-    expect(resolveApplicationLanding(permissionSnapshotFixture({permissionCodes: ['system:runtime:read']}), permissionSnapshotFixture({permissionCodes: ['system:runtime:read']}))).toBe('/iam/overview')
+    expect(resolveApplicationLanding(permissionSnapshotFixture({permissionCodes: ['system:authorization-runtime:read']}), permissionSnapshotFixture({permissionCodes: ['system:authorization-runtime:read']}))).toBe('/iam/overview')
   })
 
   it('removes the RBAC tenant catalog route and browser resource definition', () => {
@@ -99,7 +99,7 @@ describe('application router', () => {
   })
 
   it('does not expose a browser resource report or synchronization action', async () => {
-    render(<ApplicationRouter />, { wrapper: wrapper(['system:runtime:read'], '/iam/overview') })
+    render(<ApplicationRouter />, { wrapper: wrapper(['system:authorization-runtime:read'], '/iam/overview') })
     await waitFor(() => expect(screen.getByText('权限治理概览')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /sync|report|上报|同步/i })).not.toBeInTheDocument()
   })
@@ -137,7 +137,7 @@ describe('application router', () => {
     const sdk = createAuthorizationFixtureClient({
       subject: 'mario',
       tenantId: '9',
-      permissionCodes: ['system:runtime:read', 'system:organization:read'],
+      permissionCodes: ['system:authorization-runtime:read', 'system:organization:read'],
     })
     const feature: FeatureApiClient = {
       request: async <T,>(requestPath: string) => {
@@ -171,7 +171,7 @@ describe('application router', () => {
     await waitFor(() => expect(attachedPorts).toHaveLength(1))
     await waitFor(() => expect(catalogs.some((entry) => entry.status === 'ready')).toBe(true))
     const readyCatalog = catalogs.find((entry) => entry.status === 'ready')!
-    expect(readyCatalog.patterns).toEqual(['/iam/overview', '/iam/organizations'])
+    expect(readyCatalog.patterns).toEqual(['/iam/overview', '/iam/organizations', '/iam/diagnostics/runtime'])
 
     expect(screen.queryByText('Tianquan-Jianshen 权限平台')).not.toBeInTheDocument()
     expect(screen.queryByRole('navigation', {name: '主菜单'})).not.toBeInTheDocument()
