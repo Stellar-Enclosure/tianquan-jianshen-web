@@ -172,3 +172,41 @@ describe('audit log page', () => {
     cleanup()
   })
 })
+
+it('validates inclusive UTC endpoints and walks back through actual cursors', async () => {
+  const data = await request('/fixture')
+  request.mockClear()
+  request.mockImplementation(async (_path, options) => {
+    const cursor = options?.query?.cursor
+    return {...data, items: data.items.map(item => ({...item, eventType: cursor ? String(cursor) : 'FIRST_PAGE'})),
+      nextCursor: cursor === 'page-3' ? null : cursor === 'page-2' ? 'page-3' : 'page-2'}
+  })
+  try {
+    render(<AuditLogPage />, {wrapper})
+    await screen.findByText('FIRST_PAGE')
+    await waitFor(() => expect(screen.getByRole('button', {name: /下一页/})).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', {name: /下一页/}))
+    await screen.findByText('page-2')
+    await waitFor(() => expect(screen.getByRole('button', {name: /下一页/})).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', {name: /下一页/}))
+    await screen.findByText('page-3')
+    await waitFor(() => expect(screen.getByRole('button', {name: '上一页'})).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', {name: '上一页'}))
+    await screen.findByText('page-2')
+    fireEvent.change(screen.getByLabelText('From'), {target: {value: '2026-11-01T13:00:00.123456789-04:00'}})
+    fireEvent.change(screen.getByLabelText('To'), {target: {value: '2026-11-01T12:00:00-04:00'}})
+    const calls = request.mock.calls.length
+    fireEvent.click(screen.getByRole('button', {name: '应用服务端过滤'}))
+    await screen.findByText('开始时点必须早于或等于结束时点')
+    expect(request).toHaveBeenCalledTimes(calls)
+    expect(screen.getByText('page-2')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('To'), {target: {value: '2026-11-01T14:00:00-04:00'}})
+    fireEvent.click(screen.getByRole('button', {name: '应用服务端过滤'}))
+    await screen.findByText('FIRST_PAGE')
+    expect(request.mock.lastCall?.[1]?.query).toMatchObject({
+      from: '2026-11-01T17:00:00.123456789Z', to: '2026-11-01T18:00:00Z', cursor: undefined,
+    })
+  } finally {
+    request.mockImplementation(async () => data)
+  }
+})

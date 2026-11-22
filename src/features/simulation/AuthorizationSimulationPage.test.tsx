@@ -14,7 +14,8 @@ const wrapper = ({ children }: PropsWithChildren) => {
     impact: { roleId: '1001', activationRoots: ['root-1'], roleFamily: ['BUSINESS'], effectiveFamilyRisk: 'LOW', permissionCount: 3, conflicts: [] },
     policyVersion: 4, evidenceChecksum: 'impact-checksum', expiresAt: '2026-08-01T01:00:00Z',
   } : {
-    current: { functionDecision: { decision: 'DENY', reasonCode: 'PERMISSION_MISSING', evidenceIds: ['1'] } },
+    current: { functionDecision: { decision: 'DENY', reasonCode: 'PERMISSION_MISSING', evidenceIds: ['1'] },
+      dataScopeDecision: {decision: 'DENY', reasonCode: 'DATA_SCOPE_DENIED', evidenceIds: ['data-evidence-5']} },
     hypothetical: { functionDecision: { decision: 'ALLOW', reasonCode: 'PERMISSION_GRANTED', evidenceIds: ['2'] } },
           authVersion: 2, policyVersion: 4, snapshotChecksum: 'safe-checksum', expiresAt: '2026-08-01T01:00:00Z',
   }) as T }
@@ -31,6 +32,10 @@ describe('authorization simulation', () => {
     fireEvent.change(screen.getByLabelText('Resource Code'), { target: { value: 'orders.list' } })
     fireEvent.click(screen.getByRole('button', { name: '执行无副作用模拟' }))
     await waitFor(() => expect(screen.getByText('PERMISSION_GRANTED')).toBeInTheDocument())
+    expect(screen.getByText('DATA_SCOPE_DENIED')).toBeInTheDocument()
+    expect(screen.getByText(/data-evidence-5/)).toBeInTheDocument()
+    expect(screen.getByText('模拟结果已过期')).toBeInTheDocument()
+    expect(screen.queryByText('字段访问')).not.toBeInTheDocument()
     expect(screen.getByText('safe-checksum')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /应用模拟/ })).not.toBeInTheDocument()
   })

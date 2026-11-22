@@ -3,9 +3,10 @@ import {ResourceGuard} from '../../permissions/ResourceGuard'
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useMutation} from '@tanstack/react-query'
 import {Alert, Button, Card, Col, Descriptions, Form, Input, Row, Space, Tag, Typography} from 'antd'
+import {useEffect, useState} from 'react'
 import {useFeatureApi} from '../shared/FeatureApi'
 import {PageState, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
-import {type AuthorizationSimulationCommand, simulationApi, type SimulationDecisionBundle} from './simulation.api'
+import {type AuthorizationSimulationCommand, simulationApi, type SimulationDecision, type SimulationDecisionBundle} from './simulation.api'
 
 interface SimulationForm {
   readonly permissionCode: string
@@ -67,9 +68,10 @@ export const AuthorizationSimulationPage = () => {
           <Button type="primary" htmlType="submit" loading={simulation.isPending}>执行无副作用模拟</Button>
         </ResourceGuard>
       </Form>
-      <PageState loading={false} error={simulation.error} empty={!simulation.data} emptyDescription="填写条件后执行模拟">
+      <PageState loading={simulation.isPending} error={simulation.error} empty={!simulation.data} emptyDescription="填写条件后执行模拟">
         {simulation.data && (
           <Space orientation="vertical" size="middle" style={{ width: '100%', marginTop: 16 }}>
+            <ExpiryNotice key={simulation.data.expiresAt} expiresAt={simulation.data.expiresAt} />
             <Row gutter={16}>
               <Col span={12}><DecisionCard title="当前判断" bundle={simulation.data.current} /></Col>
               <Col span={12}><DecisionCard title="假设判断" bundle={simulation.data.hypothetical} /></Col>
@@ -77,7 +79,7 @@ export const AuthorizationSimulationPage = () => {
             <Descriptions bordered column={4}>
               <Descriptions.Item label="Auth Version">{simulation.data.authVersion}</Descriptions.Item>
               <Descriptions.Item label="Policy Version">{simulation.data.policyVersion}</Descriptions.Item>
-              <Descriptions.Item label="结果过期">{simulation.data.expiresAt}</Descriptions.Item>
+              <Descriptions.Item label="过期时点（UTC）">{simulation.data.expiresAt}</Descriptions.Item>
               <Descriptions.Item label="Snapshot Checksum" span={4}>{simulation.data.snapshotChecksum}</Descriptions.Item>
             </Descriptions>
           </Space>
@@ -97,8 +99,10 @@ export const AuthorizationSimulationPage = () => {
             </ResourceGuard>
           </Form.Item>
         </Form>
-        <PageState loading={false} error={roleImpact.error} empty={!roleImpact.data} emptyDescription="输入 Role ID 后查询">
+        <PageState loading={roleImpact.isPending} error={roleImpact.error} empty={!roleImpact.data} emptyDescription="输入 Role ID 后查询">
           {roleImpact.data && (
+            <Space orientation="vertical" style={{width: '100%'}}>
+            <ExpiryNotice key={roleImpact.data.expiresAt} expiresAt={roleImpact.data.expiresAt} />
             <Descriptions bordered size="small" column={2} style={{ marginTop: 16 }}>
               <Descriptions.Item label="Role ID">{roleImpact.data.impact.roleId}</Descriptions.Item>
               <Descriptions.Item label="Family Risk"><Tag>{roleImpact.data.impact.effectiveFamilyRisk}</Tag></Descriptions.Item>
@@ -110,6 +114,7 @@ export const AuthorizationSimulationPage = () => {
               <Descriptions.Item label="Evidence Checksum" span={2}>{roleImpact.data.evidenceChecksum}</Descriptions.Item>
               <Descriptions.Item label="Expires At" span={2}>{roleImpact.data.expiresAt}</Descriptions.Item>
             </Descriptions>
+            </Space>
           )}
         </PageState>
       </Card>
@@ -118,12 +123,33 @@ export const AuthorizationSimulationPage = () => {
   )
 }
 
-const DecisionCard = ({ title, bundle }: { readonly title: string; readonly bundle: SimulationDecisionBundle }) => (
+const ExpiryNotice = ({expiresAt}: {readonly expiresAt: string}) => {
+  const expires = Date.parse(expiresAt)
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    if (!Number.isFinite(expires) || expires <= now) return
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.min(expires - now + 1, 2_147_483_647))
+    return () => window.clearTimeout(timer)
+  }, [expires, now])
+  if (!Number.isFinite(expires)) return <Alert type="warning" showIcon title="服务端未返回有效的过期时点" />
+  return expires <= now ? <Alert type="warning" showIcon title="模拟结果已过期" description="重新执行可获取当前快照的判断。" /> : null
+}
+
+const DecisionCard = ({title, bundle}: {readonly title: string; readonly bundle: SimulationDecisionBundle}) => (
   <Card size="small" title={title}>
-    <Space wrap>
-      <Tag color={bundle.functionDecision.decision === 'ALLOW' ? 'green' : 'red'}>{bundle.functionDecision.decision}</Tag>
-      <Typography.Text>{bundle.functionDecision.reasonCode}</Typography.Text>
-      <Typography.Text type="secondary">证据 {bundle.functionDecision.evidenceIds.slice(0, 20).join(', ') || '-'}</Typography.Text>
-    </Space>
+    <Descriptions size="small" column={1} bordered>
+      {bundle.functionDecision && <Descriptions.Item label="功能权限"><DecisionEvidence decision={bundle.functionDecision} /></Descriptions.Item>}
+      {bundle.dataScopeDecision && <Descriptions.Item label="数据范围"><DecisionEvidence decision={bundle.dataScopeDecision} /></Descriptions.Item>}
+      {bundle.fieldPolicyDecision && <Descriptions.Item label="字段访问"><DecisionEvidence decision={bundle.fieldPolicyDecision} /></Descriptions.Item>}
+      {bundle.snapshotChecksum && <Descriptions.Item label="快照摘要">{bundle.snapshotChecksum}</Descriptions.Item>}
+    </Descriptions>
   </Card>
+)
+
+const DecisionEvidence = ({decision}: {readonly decision: SimulationDecision}) => (
+  <Space wrap>
+    <Tag color={decision.decision === 'ALLOW' ? 'green' : decision.decision === 'DENY' ? 'red' : 'default'}>{decision.decision}</Tag>
+    <Typography.Text>{decision.reasonCode}</Typography.Text>
+    {decision.evidenceIds?.length > 0 && <Typography.Text type="secondary">证据 {decision.evidenceIds.join(', ')}</Typography.Text>}
+  </Space>
 )

@@ -1,11 +1,19 @@
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useQuery} from '@tanstack/react-query'
-import {Button, Col, Form, Input, Row, Select, Table, Tag, Typography} from 'antd'
+import {Alert, Button, Col, Form, Input, Row, Select, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
-import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
+import {useFeatureApi} from '../shared/FeatureApi'
+import {permissionContextKey} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
+import {canonicalUtcInstant, utcInstantNanos} from '../shared/utcInstants'
 import {WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {AuditDetailDrawer} from './AuditDetailDrawer'
 import {auditApi, type AuditFilter, type AuditView} from './audit.api'
+
+const MAX_WINDOW_NANOS = 31n * 24n * 60n * 60n * 1_000_000_000n
+const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+const auditFormatter = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+})
 
 const makeInitialFilter = (): AuditFilter => {
   const now = new Date()
@@ -15,25 +23,47 @@ const makeInitialFilter = (): AuditFilter => {
 
 export const AuditLogPage = () => {
   const {embedded} = useEmbeddedWorkbench()
-  const {status} = useRbac3Authorization()
-  const { effectiveTenantId } = useFeatureTenantContext()
+  const {status, binding} = useRbac3Authorization()
+  const context = status === 'READY' && binding ? permissionContextKey(binding) : null
   const api = auditApi(useFeatureApi())
-  const [filter, setFilter] = useState<AuditFilter>(makeInitialFilter)
+  const [form] = Form.useForm<AuditFilter>()
+  const [search, setSearch] = useState<AuditFilter>(makeInitialFilter)
+  const [cursors, setCursors] = useState<readonly string[]>([])
+  const [filterError, setFilterError] = useState<string>()
+  const filter = {...search, cursor: cursors.at(-1)}
+  const submitFilter = (values: AuditFilter) => {
+    const from = canonicalUtcInstant(values.from)
+    const to = canonicalUtcInstant(values.to)
+    if (from === undefined || to === undefined) {
+      setFilterError('开始和结束时点须含 UTC Z 或时区偏移')
+      return
+    }
+    const duration = utcInstantNanos(to) - utcInstantNanos(from)
+    if (duration < 0n || duration > MAX_WINDOW_NANOS) {
+      setFilterError(duration < 0n ? '开始时点必须早于或等于结束时点' : '审计查询时间跨度最多 31 天')
+      return
+    }
+    setFilterError(undefined)
+    setSelected(null)
+    setCursors([])
+    setSearch({...values, from, to, limit: 50})
+  }
   const [selected, setSelected] = useState<AuditView | null>(null)
   const query = useQuery({
-    queryKey: ['tianquan-jianshen', 'audit', effectiveTenantId ?? 'none', filter],
+    queryKey: ['tianquan-jianshen', 'audit', context, filter],
     queryFn: () => api.list(filter),
-    enabled: status === 'READY',
+    enabled: context !== null,
   })
   return (
     <>
       <WorkspaceList
         ariaLabel="授权审计"
         filters={
-          <Form<AuditFilter> layout="vertical" initialValues={makeInitialFilter()} onFinish={(values) => setFilter({ ...values, limit: 50 })}>
+          <Form<AuditFilter> form={form} layout="vertical" initialValues={search} onFinish={submitFilter}>
+            {filterError && <Alert type="error" showIcon title={filterError} style={{marginBottom: 12}} />}
             <Row gutter={12}>
-              <Col span={6}><Form.Item name="from" label="From" rules={[{ required: true }]}><Input /></Form.Item></Col>
-              <Col span={6}><Form.Item name="to" label="To" rules={[{ required: true }]}><Input /></Form.Item></Col>
+              <Col span={6}><Form.Item name="from" label="From" rules={[{ required: true }]}><Input placeholder="UTC Z 或偏移" /></Form.Item></Col>
+              <Col span={6}><Form.Item name="to" label="To" rules={[{ required: true }]}><Input placeholder="UTC Z 或偏移" /></Form.Item></Col>
               <Col span={4}><Form.Item name="actorId" label="Actor ID"><Input /></Form.Item></Col>
               <Col span={4}><Form.Item name="outcome" label="Outcome"><Select allowClear options={['SUCCESS', 'DENIED', 'FAILED', 'PENDING_PROPAGATION'].map((value) => ({ value }))} /></Form.Item></Col>
               <Col span={4}><Form.Item name="reasonCode" label="Reason Code"><Input /></Form.Item></Col>
@@ -50,7 +80,7 @@ export const AuditLogPage = () => {
           <div style={{width: '100%'}}>
             {!embedded && <Typography.Text strong style={{display: 'block', marginBottom: 4}}>授权审计</Typography.Text>}
             <Typography.Text type="secondary">
-              可按决策编号查询建申本机可核实的 USER API、字段写入、数据范围策略和制品绑定诊断。请确认时间范围；其他拒绝或诊断写入失败时可能没有记录。
+              按决策编号查询已写入的授权诊断。时间范围包含起止时点。显示时区 {zone}，原始时点可在详情查看。
             </Typography.Text>
           </div>
         }
@@ -58,6 +88,7 @@ export const AuditLogPage = () => {
           loading: query.isPending,
           error: query.error,
           empty: query.data?.items.length === 0,
+          onRetry: () => {void query.refetch()},
           emptyDescription: filter.requestId ? '未找到该编号，请确认租户、时间范围和诊断是否已写入。' : '暂无审计记录',
         }}
         table={
@@ -66,7 +97,10 @@ export const AuditLogPage = () => {
             dataSource={query.data?.items ?? []}
             pagination={false}
             columns={[
-              { title: '时间', dataIndex: 'createdAt' },
+              {title: `时间（${zone}）`, dataIndex: 'createdAt', render: (value: string) => {
+                const timestamp = Date.parse(value)
+                return Number.isFinite(timestamp) ? <time dateTime={value} title={value}>{auditFormatter.format(timestamp)}</time> : '未返回'
+              }},
               { title: '事件', dataIndex: 'eventType' },
               { title: 'Outcome', dataIndex: 'outcome', render: (value: string) => <Tag>{value}</Tag> },
               { title: 'Actor', render: (_value, row) => `${row.actorType}:${row.actorId}` },
@@ -83,11 +117,12 @@ export const AuditLogPage = () => {
                 mode: 'cursor',
                 hasMore: Boolean(query.data?.nextCursor),
                 loadingMore: query.isFetching,
-                onFirst: filter.cursor ? () => setFilter((current) => ({ ...current, cursor: undefined })) : undefined,
+                hasPrevious: cursors.length > 0,
+                onFirst: cursors.length > 0 ? () => setCursors([]) : undefined,
+                onPrevious: cursors.length > 0 ? () => setCursors(current => current.slice(0, -1)) : undefined,
                 onNext: () => {
-                  if (query.data?.nextCursor) {
-                    setFilter((current) => ({ ...current, cursor: query.data?.nextCursor ?? undefined }))
-                  }
+                  const next = query.data?.nextCursor
+                  if (next && !cursors.includes(next)) setCursors(current => [...current, next])
                 },
               }
             : undefined
