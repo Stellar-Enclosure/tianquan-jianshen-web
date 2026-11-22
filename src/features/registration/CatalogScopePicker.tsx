@@ -5,21 +5,21 @@ import {useState} from 'react'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {registrationApi} from './registration.api'
 
-export const useCatalogScope = (applicationId?: string, enabled = true) => {
+export const useCatalogScope = (applicationId?: string, enabled = true, contextKey?: string) => {
   const {status} = useRbac3Authorization()
   const {effectiveTenantId} = useFeatureTenantContext()
   const api = registrationApi(useFeatureApi())
   const [selectedId, setSelectedId] = useState<string>()
-  const query = useInfiniteQuery({queryKey: ['permission-catalogs', 'scopes', effectiveTenantId], initialPageParam: '0',
-    queryFn: ({pageParam}) => api.scopes(pageParam), getNextPageParam: page => page.nextAfterId ?? undefined, enabled: enabled && status === 'READY'})
+  const query = useInfiniteQuery({queryKey: ['permission-catalogs', 'scopes', effectiveTenantId, ...(contextKey ? [contextKey] : [])], initialPageParam: '0',
+    queryFn: ({pageParam, signal}) => api.scopes(pageParam, contextKey ? signal : undefined), getNextPageParam: page => page.nextAfterId ?? undefined, enabled: enabled && status === 'READY'})
   const scopes = (query.data?.pages.flatMap(page => page.scopes) ?? [])
     .filter(value => value.scope.tenantId === effectiveTenantId && (!applicationId || value.applicationId === applicationId))
   const selected = scopes.find(value => value.scope.catalogScopeId === selectedId) ?? scopes[0]
   return {query, scopes, selected, setSelectedId}
 }
-export const CatalogScopePicker = ({value}: {value: ReturnType<typeof useCatalogScope>}) => <Space wrap style={{marginBottom: 16}}>
+export const CatalogScopePicker = ({value, onSelect}: {value: ReturnType<typeof useCatalogScope>; onSelect?: (id: string) => void}) => <Space wrap style={{marginBottom: 16}}>
   <Select aria-label="权限目录范围" placeholder="选择服务端已配置的范围" style={{minWidth: 380}} loading={value.query.isPending}
-    value={value.selected?.scope.catalogScopeId} onChange={value.setSelectedId}
+    value={value.selected?.scope.catalogScopeId} onChange={onSelect ?? value.setSelectedId}
     options={value.scopes.map(entry => ({value: entry.scope.catalogScopeId,
       label: `${entry.scope.businessCode} / ${entry.scope.applicationCode} / ${entry.scope.namespaceCode} / ${entry.scope.environment}`}))} />
   {value.query.hasNextPage && <Button onClick={() => void value.query.fetchNextPage()} loading={value.query.isFetchingNextPage}>更多范围</Button>}

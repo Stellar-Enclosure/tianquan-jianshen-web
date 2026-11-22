@@ -102,9 +102,9 @@ export interface InheritanceCommand {
 }
 
 export const roleApi = (client: FeatureApiClient) => ({
-  roles: (applicationId?: string) => client.request<readonly RoleView[]>(
+  roles: (applicationId?: string, signal?: AbortSignal) => client.request<readonly RoleView[]>(
     '/api/tianquan-jianshen/v1/iam/roles',
-    { query: { applicationId } },
+    { query: { applicationId }, ...(signal && {signal}) },
   ),
   roleEditDetail: async (roleId: string, applicationId: string, signal: AbortSignal) => {
     const value = await client.request<unknown>(
@@ -139,8 +139,8 @@ export const roleApi = (client: FeatureApiClient) => ({
   impact: (roleId: string) => client.request<RoleImpactView>(
     `/api/tianquan-jianshen/v1/iam/roles/${encodeURIComponent(roleId)}/impact-analysis`,
   ),
-  permissions: async (roleId: string, target: CatalogScope) => {
-    const value = await client.request<RolePermissionGrantView>(`/api/v1/roles/${encodeURIComponent(roleId)}/permissions`, {query: {...target}})
+  permissions: async (roleId: string, target: CatalogScope, signal?: AbortSignal) => {
+    const value = await client.request<RolePermissionGrantView>(`/api/v1/roles/${encodeURIComponent(roleId)}/permissions`, {query: {...target}, ...(signal && {signal})})
     if (value.roleId !== roleId || !isCatalogScope(value.target) || catalogScopeKey(value.target) !== catalogScopeKey(target)) throw new Error('角色授予响应与当前范围不一致')
     return value
   },

@@ -39,16 +39,16 @@ const checkedActivation = (value: ActivationDescriptor, target: CatalogScope, op
   return value
 }
 export const registrationApi = (client: FeatureApiClient) => ({
-  scopes: async (afterId = '0'): Promise<ScopePage> => {
-    const result = await client.request<ScopePage>('/api/v1/permission-catalogs/scopes', {query: {afterId, limit: 100}})
+  scopes: async (afterId = '0', signal?: AbortSignal): Promise<ScopePage> => {
+    const result = await client.request<ScopePage>('/api/v1/permission-catalogs/scopes', {query: {afterId, limit: 100}, ...(signal && {signal})})
     if (!Array.isArray(result.scopes) || result.scopes.some(value => !isCatalogScope(value.scope))) throw new Error('权限范围响应无效')
     return result
   },
-  producers: async (target: CatalogScope) => sameTarget(target, await client.request<Producers>('/api/v1/permission-catalogs/producers', {query: {...target}})),
+  producers: async (target: CatalogScope, signal?: AbortSignal) => sameTarget(target, await client.request<Producers>('/api/v1/permission-catalogs/producers', {query: {...target}, ...(signal && {signal})})),
   candidates: async (target: CatalogScope, producerId: string, beforeVersion = '0') => sameTarget(target, await client.request<Candidates>('/api/v1/permission-catalogs/candidates', {query: {...target, producerId, beforeVersion, limit: 20}})),
   diff: async (target: CatalogScope, producerId: string, producerVersion: string) => sameTarget(target, await client.request<ManifestDiff>('/api/v1/permission-catalogs/diff', {query: {...target, producerId, producerVersion}})),
-  definitions: async (target: CatalogScope, kind: DefinitionKind, afterId = '0') => sameTarget(target, await client.request<Definitions>('/api/v1/permission-catalogs/definitions', {query: {...target, kind, afterId, limit: 100}})),
-  definition: (target: CatalogScope, kind: DefinitionKind, identityId: string) => client.request<DefinitionDetail>(`/api/v1/permission-catalogs/definitions/${kind}/${encodeURIComponent(identityId)}`, {query: {...target}}),
+  definitions: async (target: CatalogScope, kind: DefinitionKind, afterId = '0', signal?: AbortSignal) => sameTarget(target, await client.request<Definitions>('/api/v1/permission-catalogs/definitions', {query: {...target, kind, afterId, limit: 100}, ...(signal && {signal})})),
+  definition: (target: CatalogScope, kind: DefinitionKind, identityId: string, signal?: AbortSignal) => client.request<DefinitionDetail>(`/api/v1/permission-catalogs/definitions/${kind}/${encodeURIComponent(identityId)}`, {query: {...target}, ...(signal && {signal})}),
   govern: (command: GovernanceCommand) => client.request<{target: CatalogScope; kind: DefinitionKind; identity: Definition; policyVersion: string}>('/api/v1/permission-catalogs/governance', {method: 'POST', body: command}),
   activate: async (command: ActivationCommand) => checkedActivation(await client.request<ActivationDescriptor>('/api/v1/permission-catalogs/activations', {method: 'POST', body: command}), command.target, command.operationId, command.producers),
   versions: (target: CatalogScope, beforeVersion = '0') => client.request<ActivationHistory>('/api/v1/permission-catalogs/versions', {query: {...target, beforeVersion, limit: 20}}),
