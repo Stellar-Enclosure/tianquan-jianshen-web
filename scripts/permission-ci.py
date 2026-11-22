@@ -72,6 +72,12 @@ if __name__ == '__main__' and sys.argv[1:] == ['pin']:
 else:
     try:
         adapter, source = _shared_adapter()
+        if __name__ == '__main__' and sys.argv[1:] in (['register'], ['activate']):
+            build_root = Path(os.environ['PERMISSION_BUILD_ROOT']).resolve()
+            verifier = Path(__file__).with_name('deployment-config.mjs')
+            target_file = Path(__file__).resolve().parents[1] / 'permission-targets.json'
+            subprocess.run(['node', str(verifier), str(build_root / 'dist'),
+                            str(target_file), os.environ['PERMISSION_TARGET']], check=True)
         exec(compile(source, str(adapter), 'exec'), globals())
     except (ValueError, OSError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError):
         if __name__ != '__main__':

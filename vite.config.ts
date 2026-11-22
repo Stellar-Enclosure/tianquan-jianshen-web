@@ -19,10 +19,17 @@ export default defineConfig(async ({mode, command}) => {
     throw new Error('Invalid VITE_BASE_PATH')
   }
   const basePath = configuredBase === '/' ? '/' : configuredBase.replace(/\/?$/, '/')
+  const deploymentConfig = process.env.JIANSHEN_DEPLOYMENT_CONFIG
+  const deploymentPlugin: import('vite').PluginOption[] = deploymentConfig ? [{
+    name: 'jianshen-deployment-config',
+    generateBundle() {
+      this.emitFile({type: 'asset', fileName: 'deployment-config.json', source: deploymentConfig + '\n'})
+    },
+  }] : []
 
   return {
     base: basePath,
-    plugins: [react(), egonFaviconPlugin(), ...permissionPlugins],
+    plugins: [react(), egonFaviconPlugin(), ...permissionPlugins, ...deploymentPlugin],
     resolve: {
       dedupe: ["react", "react-dom", "react-i18next", "i18next", "antd", "@tanstack/react-query", "react-router-dom", "@ant-design/icons"],
     },

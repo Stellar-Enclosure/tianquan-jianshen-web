@@ -24,6 +24,11 @@ jobs:
       PAC_CONTRACT_ARTIFACT: ${{ github.workspace }}/permission-temp/permission-contract.jar
       PAC_BACKEND_MANIFEST: ${{ github.workspace }}/permission-temp/backend-manifest.json
       PAC_BUILD_ID: github-${{ github.run_id }}-${{ github.run_attempt }}
+      JIANSHEN_RELEASE_BUILD: ${{ vars.JIANSHEN_RELEASE_BUILD }}
+      VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || '/' }}
+      VITE_PERMISSION_NAMESPACE: ${{ vars.VITE_PERMISSION_NAMESPACE }}
+      VITE_PERMISSION_ENVIRONMENT: ${{ vars.VITE_PERMISSION_ENVIRONMENT }}
+      VITE_TIANQUAN_JIANSHEN_OAUTH_CONFIG: ${{ vars.VITE_TIANQUAN_JIANSHEN_OAUTH_CONFIG }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -84,6 +89,9 @@ jobs:
           node "$PAC_SDK_DIR/scripts/verify-consumers.mjs" \
             --workspace "$GITHUB_WORKSPACE/workspace" --cache "$HOME/.npm" \
             --output "$RUNNER_TEMP/permission-npm" --consumer tianquan-jianshen-web --phase verify --online true
+      - name: Test deployment configuration rejection and artifact checks
+        working-directory: workspace/tianquan-jianshen-web
+        run: node --test scripts/deployment-config.test.mjs
       - name: Validate the exact final static artifact offline
         working-directory: workspace/tianquan-jianshen-web
         run: python3 scripts/permission-ci.py validate

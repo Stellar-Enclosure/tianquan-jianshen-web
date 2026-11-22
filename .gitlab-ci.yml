@@ -76,6 +76,7 @@ build-and-unit-tests:
       node "$PERMISSION_SDK_ROOT/scripts/verify-consumers.mjs" \
         --workspace "$CI_PROJECT_DIR/.ci/workspace" --cache "$npm_config_cache" \
         --output "$CI_PROJECT_DIR/.ci/npm-artifacts" --consumer tianquan-jianshen-web --phase verify --online true
+      node --test "$PERMISSION_BUILD_ROOT/scripts/deployment-config.test.mjs"
       python3 scripts/permission-ci.py validate
   artifacts:
     when: always
