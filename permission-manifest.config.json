@@ -7,7 +7,7 @@
   "producerId": "tianquan-jianshen-web",
   "backendReferences": {
     "producerId": "tianquan-jianshen-java",
-    "manifestDigest": "17ff366393913121fa60123a487a0d57419774efd50fe40ffc79b25fcf189cd5"
+    "manifestDigest": "fd5bc4738e322440f5839f5c499e4e9c91c5cedb56c52093469414381db4eb1b"
   },
   "ownedKeyPrefixes": [
     "tianquan-jianshen.app.",
