@@ -1,7 +1,18 @@
 import {fieldReferences} from './fieldReferences'
-import {permissionSystemRolePermissionRead} from '../../.generated/permissions/backend-references'
+import {
+  apiTianquanJianshenApiRoleRoleEditDetail,
+  fieldRoleEditDetailVOApplicationId,
+  fieldRoleEditDetailVOLandingPriority,
+  fieldRoleEditDetailVOLandingRouteId,
+  fieldRoleEditDetailVOMaximumAssignmentDays,
+  fieldRoleEditDetailVORoleId,
+  fieldRoleEditDetailVORoleName,
+  fieldRoleEditDetailVOStatus,
+  fieldRoleEditDetailVOVersion,
+  permissionSystemRolePermissionRead,
+} from '../../.generated/permissions/backend-references'
 import {rolePermissionButtons, rolePermissionFieldReferences} from '../features/role/rolePermissionResources'
-import {defineResources, defineMessages} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
+import {defineResources, defineMessages, defineResourceReferences} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 
 export const resources = defineResources([
   {
@@ -1244,7 +1255,18 @@ export const resources = defineResources([
   }
 ] as const)
 
-export const resourceReferences = [...fieldReferences, ...rolePermissionFieldReferences] as const
+export const roleEditReferences = defineResourceReferences([
+  {key: apiTianquanJianshenApiRoleRoleEditDetail, usage: 'CALLS'},
+  {key: fieldRoleEditDetailVORoleId, usage: 'DETAIL_FIELD'},
+  {key: fieldRoleEditDetailVOApplicationId, usage: 'DETAIL_FIELD'},
+  {key: fieldRoleEditDetailVORoleName, usage: 'DETAIL_FIELD'},
+  {key: fieldRoleEditDetailVOStatus, usage: 'DETAIL_FIELD'},
+  {key: fieldRoleEditDetailVOLandingRouteId, usage: 'DETAIL_FIELD'},
+  {key: fieldRoleEditDetailVOLandingPriority, usage: 'DETAIL_FIELD'},
+  {key: fieldRoleEditDetailVOMaximumAssignmentDays, usage: 'DETAIL_FIELD'},
+  {key: fieldRoleEditDetailVOVersion, usage: 'DETAIL_FIELD'},
+] as const)
+export const resourceReferences = [...fieldReferences, ...rolePermissionFieldReferences, ...roleEditReferences] as const
 
 export const messages = defineMessages([
   {

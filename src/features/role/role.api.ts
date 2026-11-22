@@ -13,6 +13,36 @@ export interface RoleView {
   readonly version: number
 }
 
+export interface RoleEditDetailView {
+  readonly roleId: string
+  readonly applicationId: string
+  readonly roleName: string
+  readonly status: 'ACTIVE' | 'DISABLED' | 'ARCHIVED'
+  readonly landingRouteId: string | null
+  readonly landingPriority: number
+  readonly maximumAssignmentDays: number | null
+  readonly version: number
+}
+
+const isRoleId = (value: unknown): value is string =>
+  typeof value === 'string' && /^[1-9][0-9]{0,18}$/.test(value)
+    && (value.length < 19 || value <= '9223372036854775807')
+
+const isBoundedInteger = (value: unknown, minimum: number, maximum = Number.MAX_SAFE_INTEGER): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= minimum && value <= maximum
+
+const isEditDetail = (value: unknown): value is RoleEditDetailView => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const detail = value as Record<string, unknown>
+  return isRoleId(detail.roleId) && isRoleId(detail.applicationId)
+    && typeof detail.roleName === 'string' && detail.roleName.trim().length > 0 && detail.roleName.length <= 200
+    && (detail.status === 'ACTIVE' || detail.status === 'DISABLED' || detail.status === 'ARCHIVED')
+    && (detail.landingRouteId === null || isRoleId(detail.landingRouteId))
+    && isBoundedInteger(detail.landingPriority, 0, 2_147_483_647)
+    && (detail.maximumAssignmentDays === null || isBoundedInteger(detail.maximumAssignmentDays, 1, 2_147_483_647))
+    && isBoundedInteger(detail.version, 0)
+}
+
 export interface RoleImpactView {
   readonly roleId: string
   readonly activationRoots: readonly string[]
@@ -76,6 +106,16 @@ export const roleApi = (client: FeatureApiClient) => ({
     '/api/tianquan-jianshen/v1/iam/roles',
     { query: { applicationId } },
   ),
+  roleEditDetail: async (roleId: string, applicationId: string, signal: AbortSignal) => {
+    const value = await client.request<unknown>(
+      `/api/tianquan-jianshen/v1/iam/roles/${encodeURIComponent(roleId)}`,
+      {signal},
+    )
+    if (!isEditDetail(value) || value.roleId !== roleId || value.applicationId !== applicationId) {
+      throw new Error('角色详情不可用于编辑')
+    }
+    return value
+  },
   create: (command: CreateRoleCommand) => client.request<RoleMutationResult>(
     '/api/tianquan-jianshen/v1/iam/roles',
     { method: 'POST', body: command },

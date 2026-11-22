@@ -23,3 +23,11 @@ export const useWritableFieldKeys = (keys: readonly string[]): boolean => {
 }
 export const useWritableFields = (...dtos: readonly (keyof typeof inputFields)[]): boolean =>
   useWritableFieldKeys(dtos.flatMap(dto => inputFields[dto]))
+
+
+export const usePlainReadFields = (keys: readonly string[]): boolean => {
+  const catalog = useContext(FieldCatalogContext)
+  const {status, snapshot, binding} = useRbac3Authorization()
+  return keys.length > 0 && keys.every(key =>
+    evaluateFieldAccess(key, catalog, status === 'READY' ? snapshot : null, binding).read === 'PLAIN')
+}

@@ -1,19 +1,25 @@
-import {useWritableFields} from '../../permissions/FieldCatalog'
-import {ResourceGuard} from '../../permissions/ResourceGuard'
-import {useMutation, useQueries, useQuery, useQueryClient} from '@tanstack/react-query'
-import {Alert, Button, Card, Descriptions, Drawer, Form, Input, InputNumber, Modal, Select, Space, Tag, Typography} from 'antd'
-import {useState} from 'react'
+import {usePlainReadFields, useWritableFields} from '../../permissions/FieldCatalog'
+import {ResourceGuard, useResourcePermission} from '../../permissions/ResourceGuard'
+import {roleEditReferences} from '../../permissions/resources'
+import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
+import {Alert, Button, Descriptions, Drawer, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, Typography} from 'antd'
+import {useEffect, useRef, useState} from 'react'
 import {Link} from 'react-router-dom'
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
-import {PageState, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {ApiError, PageState, WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {permissionContextKey} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
-import {roleApi, type RoleImpactView, type RoleView} from './role.api'
+import {roleApi, type CreateRoleCommand, type RoleEditDetailView, type RoleView, type UpdateRoleCommand} from './role.api'
 
 export interface RoleGraphPageProps {
   readonly applicationId?: string
 }
 
-const MAX_RENDERED_ROLES = 200
+const EDIT_ROLE_BUTTON = 'tianquan-jianshen.button.RoleGraphPage.update1'
+const CREATE_ROLE_BUTTON = 'tianquan-jianshen.button.RoleGraphPage.create1'
+const PAGE_SIZE = 20
+const roleEditDetailFieldKeys = roleEditReferences.filter(reference => reference.usage === 'DETAIL_FIELD')
+  .map(reference => reference.key)
 
 type RoleFormValues = {
   applicationId?: string
@@ -27,6 +33,29 @@ type RoleFormValues = {
   landingPriority: number
   maximumAssignmentDays?: number | null
 }
+
+type RoleFilters = {applicationId?: string; search?: string; status?: string}
+type EditValues = Omit<UpdateRoleCommand, 'expectedRoleVersion'>
+type RoleEditor = {kind: 'create'} | {kind: 'edit'; role: RoleView; session: number}
+type RoleSave = {kind: 'create'; command: CreateRoleCommand}
+  | {kind: 'edit'; original: RoleEditDetailView; values: EditValues}
+
+const editValues = (detail: RoleEditDetailView): EditValues => ({
+  roleName: detail.roleName,
+  status: detail.status,
+  landingRouteId: detail.landingRouteId,
+  landingPriority: detail.landingPriority,
+  maximumAssignmentDays: detail.maximumAssignmentDays,
+})
+
+const editLabels = {
+  roleName: '角色名称',
+  status: '状态',
+  landingRouteId: '落地路由 ID',
+  landingPriority: '落地优先级',
+  maximumAssignmentDays: '最长任职天数',
+} satisfies Record<keyof EditValues, string>
+const editKeys = Object.keys(editLabels) as Array<keyof EditValues>
 
 type InheritanceFormValues = {
   applicationId: string
@@ -51,40 +80,64 @@ const riskLevels = [
 const statusOptions = [
   {value: 'ACTIVE', label: '启用'},
   {value: 'DISABLED', label: '停用'},
+  {value: 'ARCHIVED', label: '归档'},
 ]
 
-export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
+export const RoleGraphPage = (props: RoleGraphPageProps) => {
+  const {binding, status} = useRbac3Authorization()
+  const contextKey = status === 'READY' && binding ? permissionContextKey(binding) : null
+  return <RoleGraph key={JSON.stringify([contextKey, props.applicationId])} {...props} contextKey={contextKey} />
+}
+
+const RoleGraph = ({applicationId, contextKey}: RoleGraphPageProps & {contextKey: string | null}) => {
   const {embedded} = useEmbeddedWorkbench()
-  const {status} = useRbac3Authorization()
   const {effectiveTenantId} = useFeatureTenantContext()
   const api = roleApi(useFeatureApi())
   const queryClient = useQueryClient()
-  const [editingRole, setEditingRole] = useState<RoleView | null>(null)
-  const [roleModalOpen, setRoleModalOpen] = useState(false)
+  const [editor, setEditor] = useState<RoleEditor | null>(null)
+  const nextSession = useRef(0)
   const [inheritanceRole, setInheritanceRole] = useState<RoleView | null>(null)
   const [impactRole, setImpactRole] = useState<RoleView | null>(null)
+  const [filters, setFilters] = useState<RoleFilters>({applicationId})
+  const [page, setPage] = useState(1)
+  const [review, setReview] = useState<Extract<RoleSave, {kind: 'edit'}> | null>(null)
   const [roleForm] = Form.useForm<RoleFormValues>()
   const [inheritanceForm] = Form.useForm<InheritanceFormValues>()
-  const tenant = effectiveTenantId ?? 'none'
-  const rolesKey = ['tianquan-jianshen', 'roles', tenant, applicationId ?? 'all']
+  const editingRole = editor?.kind === 'edit' ? editor.role : null
+  const ready = contextKey !== null && effectiveTenantId !== null
+  const canEdit = useResourcePermission(EDIT_ROLE_BUTTON)
+  const canCreate = useResourcePermission(CREATE_ROLE_BUTTON)
+  const detailReadable = usePlainReadFields(roleEditDetailFieldKeys)
+  const fieldsWritable = useWritableFields(editingRole ? 'UpdateRoleRequestDTO' : 'CreateRoleRequestDTO')
+  const inheritanceWritable = useWritableFields('InheritanceRequestDTO')
 
   const roles = useQuery({
-    queryKey: rolesKey,
-    queryFn: () => api.roles(applicationId),
-    enabled: status === 'READY',
+    queryKey: ['tianquan-jianshen', 'roles', contextKey, effectiveTenantId, filters.applicationId ?? 'all'],
+    queryFn: () => api.roles(filters.applicationId),
+    enabled: ready,
   })
-  const visibleRoles = (roles.data ?? []).slice(0, MAX_RENDERED_ROLES)
-  const impacts = useQueries({
-    queries: visibleRoles.map((role) => ({
-      queryKey: ['tianquan-jianshen', 'role-impact', tenant, role.roleId],
-      queryFn: () => api.impact(role.roleId),
-      enabled: status === 'READY',
-    })),
+  const impact = useQuery({
+    queryKey: ['tianquan-jianshen', 'role-impact', contextKey, effectiveTenantId, impactRole?.roleId],
+    queryFn: () => api.impact(impactRole!.roleId),
+    enabled: ready && impactRole !== null,
   })
-  const impactByRole = new Map<string, RoleImpactView>()
-  impacts.forEach((impact) => {
-    if (impact.data) impactByRole.set(impact.data.roleId, impact.data)
+  const detail = useQuery({
+    queryKey: ['tianquan-jianshen', 'role-edit-detail', contextKey, effectiveTenantId,
+      editingRole?.applicationId, editingRole?.roleId, editor?.kind === 'edit' ? editor.session : null],
+    queryFn: ({signal}) => api.roleEditDetail(editingRole!.roleId, editingRole!.applicationId, signal),
+    enabled: ready && canEdit && detailReadable && editingRole !== null,
+    gcTime: 0,
+    staleTime: Infinity,
+    retry: false,
   })
+  const original = detail.data
+  const detailAvailable = editingRole !== null && original !== undefined && detailReadable && canEdit
+    && !detail.isFetching && !detail.isError
+  const editorWritable = ready && fieldsWritable && (editingRole ? detailAvailable && !review : canCreate)
+
+  useEffect(() => {
+    if (editingRole && detailReadable && canEdit && original) roleForm.setFieldsValue(editValues(original))
+  }, [canEdit, detailReadable, editingRole, original, roleForm])
 
   const refreshRoles = async () => {
     await Promise.all([
@@ -93,35 +146,32 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
     ])
   }
 
-  const fieldsWritable = useWritableFields(editingRole ? 'UpdateRoleRequestDTO' : 'CreateRoleRequestDTO')
-  const inheritanceWritable = useWritableFields('InheritanceRequestDTO')
   const saveRole = useMutation({
-    mutationFn: (values: RoleFormValues) => editingRole
-      ? api.update(editingRole.roleId, {
-        roleName: values.roleName.trim(),
-        status: values.status,
-        landingRouteId: values.landingRouteId?.trim() || null,
-        landingPriority: values.landingPriority,
-        maximumAssignmentDays: values.maximumAssignmentDays ?? null,
-        expectedRoleVersion: editingRole.version,
-      })
-      : api.create({
-        applicationId: values.applicationId!.trim(),
-        roleCode: values.roleCode!.trim(),
-        roleName: values.roleName.trim(),
-        roleType: values.roleType,
-        riskLevel: values.riskLevel,
-        privileged: values.privileged,
-        landingRouteId: values.landingRouteId?.trim() || null,
-        landingPriority: values.landingPriority,
-        maximumAssignmentDays: values.maximumAssignmentDays ?? null,
-      }),
+    mutationFn: (change: RoleSave) => change.kind === 'edit'
+      ? api.update(change.original.roleId, {...change.values, expectedRoleVersion: change.original.version})
+      : api.create(change.command),
+    retry: false,
     onSuccess: async () => {
-      setRoleModalOpen(false)
-      setEditingRole(null)
+      setEditor(null)
+      setReview(null)
       await refreshRoles()
     },
+    onError: async (error, change) => {
+      if (change.kind === 'edit' && (!(error instanceof ApiError) || error.status === 409 || error.retryable)) {
+        setReview(change)
+        await detail.refetch()
+      }
+    },
   })
+
+  const applyReviewedChanges = () => {
+    if (!review || !original || !detailAvailable || !fieldsWritable) return
+    const changed = Object.fromEntries(editKeys.filter(key => review.values[key] !== review.original[key])
+      .map(key => [key, review.values[key]]))
+    roleForm.setFieldsValue({...editValues(original), ...changed})
+    setReview(null)
+    saveRole.reset()
+  }
 
   const addInheritance = useMutation({
     mutationFn: (values: InheritanceFormValues) => {
@@ -152,11 +202,17 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
     },
   })
 
+  const closeEditor = () => {
+    setEditor(null)
+    setReview(null)
+    saveRole.reset()
+  }
+
   const openCreate = () => {
-    setEditingRole(null)
+    saveRole.reset()
     roleForm.resetFields()
     roleForm.setFieldsValue({
-      applicationId: applicationId ?? '',
+      applicationId: filters.applicationId ?? '',
       roleType: 'PUBLIC',
       riskLevel: 'LOW',
       privileged: false,
@@ -164,21 +220,15 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
       landingPriority: 0,
       maximumAssignmentDays: null,
     })
-    setRoleModalOpen(true)
+    setEditor({kind: 'create'})
   }
 
   const openEdit = (role: RoleView) => {
-    setEditingRole(role)
-    roleForm.setFieldsValue({
-      roleName: role.roleName,
-      roleType: role.roleType,
-      riskLevel: role.riskLevel,
-      privileged: role.privileged,
-      status: role.status,
-      landingPriority: 0,
-      maximumAssignmentDays: null,
-    })
-    setRoleModalOpen(true)
+    if (!ready || !canEdit) return
+    saveRole.reset()
+    setReview(null)
+    roleForm.resetFields()
+    setEditor({kind: 'edit', role, session: ++nextSession.current})
   }
 
   const openInheritance = (role: RoleView) => {
@@ -190,11 +240,25 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
     })
   }
 
-  const submitRole = async () => {
-    try {
-      if (fieldsWritable) saveRole.mutate(await roleForm.validateFields())
-    } catch {
-      return
+  const submitRole = (values: RoleFormValues) => {
+    if (!editorWritable || saveRole.isPending || saveDenied || editor === null) return
+    const roleValues = {
+      roleName: values.roleName.trim(),
+      landingRouteId: values.landingRouteId?.trim() || null,
+      landingPriority: values.landingPriority,
+      maximumAssignmentDays: values.maximumAssignmentDays ?? null,
+    }
+    if (editor.kind === 'edit' && original) {
+      saveRole.mutate({kind: 'edit', original, values: {...roleValues, status: values.status}})
+    } else if (editor.kind === 'create') {
+      saveRole.mutate({kind: 'create', command: {
+        ...roleValues,
+        applicationId: values.applicationId!.trim(),
+        roleCode: values.roleCode!.trim(),
+        roleType: values.roleType,
+        riskLevel: values.riskLevel,
+        privileged: values.privileged,
+      }})
     }
   }
 
@@ -214,96 +278,128 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
     }
   }
 
+  const search = filters.search?.trim().toLocaleLowerCase()
+  const filtered = (roles.data ?? []).filter(role => (!filters.status || role.status === filters.status)
+    && (!search || role.roleName.toLocaleLowerCase().includes(search) || role.roleCode.toLocaleLowerCase().includes(search)))
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)))
+  const visible = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const relationError = addInheritance.error ?? removeInheritance.error
+  const impactSummary = impact.data?.roleId === impactRole?.roleId ? impact.data : undefined
+  const editFailed = detail.isError ? detail.error : null
+  const saveDenied = saveRole.error instanceof ApiError && (saveRole.error.status === 401 || saveRole.error.status === 403)
+
   return (
-    <div style={{width: '100%'}}>
-    <Card
-      title={!embedded ? '角色图谱' : undefined}
-      extra={(
-        <ResourceGuard resourceKey="tianquan-jianshen.button.RoleGraphPage.create1">
-          <Button type="primary" onClick={openCreate}>新建角色</Button>
-        </ResourceGuard>
-      )}
-    >
-      <Typography.Paragraph type="secondary">
-        图谱按 APP 隔离；Root 是可激活角色，Child 只随根角色继承生效。所有变更均携带角色版本，避免覆盖他人的并发修改。
-      </Typography.Paragraph>
-      {(saveRole.error || addInheritance.error || removeInheritance.error) && (
-        <Alert
-          type="error"
-          showIcon
-          closable
-          message={[
-            saveRole.error,
-            addInheritance.error,
-            removeInheritance.error,
-          ].find(Boolean) instanceof Error
-            ? ([saveRole.error, addInheritance.error, removeInheritance.error].find(Boolean) as Error).message
-            : '角色变更失败，请重试或刷新版本'}
-          style={{marginBottom: 16}}
-        />
-      )}
-      {(roles.data?.length ?? 0) > MAX_RENDERED_ROLES && (
-        <Typography.Paragraph type="warning">
-          节点超过渲染上限，仅显示前 {MAX_RENDERED_ROLES} 个角色摘要。
-        </Typography.Paragraph>
-      )}
-      <PageState loading={roles.isPending} error={roles.error} empty={roles.data?.length === 0}>
-        {visibleRoles.map((role) => {
-          const impact = impactByRole.get(role.roleId)
-          const ambiguous = (impact?.activationRoots.length ?? 0) > 1
-            || (impact?.conflicts.length ?? 0) > 0
-          return (
-            <Card key={role.roleId} size="small" style={{marginBottom: 12}}>
-              <Space orientation="vertical" size="small" style={{width: '100%'}}>
-                <Space wrap>
-                  <Typography.Text strong>{role.roleName}</Typography.Text>
-                  <Typography.Text code>{role.roleCode}</Typography.Text>
-                  <Typography.Text type="secondary">APP {role.applicationId}</Typography.Text>
-                  <Tag>{roleTypes.find((type) => type.value === role.roleType)?.label ?? role.roleType}</Tag>
-                  <Tag color={impact?.activationRoots.includes(role.roleId) ? 'blue' : 'default'}>
-                    {impact ? (impact.activationRoots.includes(role.roleId) ? 'Root' : 'Child') : '层级待确认'}
-                  </Tag>
-                  {role.status !== 'ACTIVE' && <Tag color="red">Disabled</Tag>}
-                  {ambiguous && <Tag color="orange">Ambiguous</Tag>}
-                  <Tag>{role.riskLevel}</Tag>
-                  <Tag>版本 {role.version}</Tag>
-                </Space>
-                <Space wrap>
-                  <Button size="small" onClick={() => setImpactRole(role)}>影响分析</Button>
-                  <ResourceGuard resourceKey="tianquan-jianshen.button.RoleGraphPage.update1">
+    <>
+      <WorkspaceList
+        ariaLabel="角色管理"
+        filters={(
+          <Form<RoleFilters> layout="inline" initialValues={{applicationId}} onFinish={values => {
+            setFilters({...values, applicationId: values.applicationId?.trim() || undefined})
+            setPage(1)
+          }}>
+            <Form.Item label="应用 ID" name="applicationId"><Input allowClear /></Form.Item>
+            <Form.Item label="角色名称或编码" name="search"><Input allowClear /></Form.Item>
+            <Form.Item label="状态" name="status"><Select allowClear options={statusOptions} style={{minWidth: 112}} /></Form.Item>
+            <Button type="primary" htmlType="submit">查询</Button>
+          </Form>
+        )}
+        toolbar={(
+          <>
+            {!embedded && <Typography.Text strong>角色管理</Typography.Text>}
+            <Space wrap>
+              <Button onClick={() => {void refreshRoles()}} disabled={!ready}>刷新</Button>
+              <ResourceGuard resourceKey={CREATE_ROLE_BUTTON}>
+                <Button type="primary" onClick={openCreate}>新建角色</Button>
+              </ResourceGuard>
+            </Space>
+            {relationError && <Alert type="error" showIcon title={relationError.message} />}
+          </>
+        )}
+        pageState={{loading: !ready || roles.isPending, error: roles.error, empty: filtered.length === 0}}
+        pagination={{mode: 'page', current: currentPage, pageSize: PAGE_SIZE, total: filtered.length, onChange: setPage}}
+        table={(
+          <Table<RoleView> rowKey="roleId" dataSource={visible} pagination={false} scroll={{x: 'max-content'}}
+            columns={[
+              {title: '角色名称', dataIndex: 'roleName'},
+              {title: '角色编码', dataIndex: 'roleCode'},
+              {title: '应用 ID', dataIndex: 'applicationId'},
+              {title: '类型', dataIndex: 'roleType',
+                render: (value: string) => roleTypes.find(type => type.value === value)?.label ?? value},
+              {title: '状态', dataIndex: 'status',
+                render: (value: string) => <Tag>{statusOptions.find(option => option.value === value)?.label ?? value}</Tag>},
+              {title: '风险', dataIndex: 'riskLevel'},
+              {title: '版本', dataIndex: 'version'},
+              {title: '操作', render: (_value: unknown, role: RoleView) => (
+                <Space size="small" wrap>
+                  <Button size="small" onClick={() => setImpactRole(role)}>角色关系</Button>
+                  <ResourceGuard resourceKey={EDIT_ROLE_BUTTON}>
                     <Button size="small" onClick={() => openEdit(role)}>编辑</Button>
                   </ResourceGuard>
                   <ResourceGuard resourceKey="tianquan-jianshen.button.RoleGraphPage.manage1">
                     <Button size="small" onClick={() => openInheritance(role)}>继承管理</Button>
                   </ResourceGuard>
                   <ResourceGuard resourceKey="tianquan-jianshen.button.RoleGraphPage.read1">
-                    <Link to={`/iam/roles/${encodeURIComponent(role.roleId)}/permissions`}>
-                      <Button size="small">权限字符授权</Button>
-                    </Link>
+                    <Link to={`/iam/roles/${encodeURIComponent(role.roleId)}/permissions`}>权限字符授权</Link>
                   </ResourceGuard>
                 </Space>
-              </Space>
-            </Card>
-          )
-        })}
-      </PageState>
+              )},
+            ]} />
+        )}
+      />
 
       <Modal
-        open={roleModalOpen} okButtonProps={{disabled: !fieldsWritable}}
+        open={editor !== null}
         title={editingRole ? '编辑角色' : '新建角色'}
-        onCancel={() => { setRoleModalOpen(false); setEditingRole(null) }}
-        onOk={() => { void submitRole() }}
+        okButtonProps={{disabled: !editorWritable || saveDenied}}
+        cancelButtonProps={{disabled: saveRole.isPending}}
+        closable={!saveRole.isPending}
+        keyboard={!saveRole.isPending}
+        mask={{closable: !saveRole.isPending}}
+        onCancel={closeEditor}
+        onOk={() => roleForm.submit()}
         okText="保存"
         confirmLoading={saveRole.isPending}
         destroyOnHidden
       >
-        <Form disabled={!fieldsWritable} form={roleForm} layout="vertical">
+        {editingRole && (
+          <>
+            {(!canEdit || !detailReadable) &&
+              <Alert type="warning" showIcon title="角色详情字段当前不可读取，暂不能保存" />}
+            {canEdit && detailReadable && detail.isFetching &&
+              <Typography.Paragraph role="status">正在读取角色原配置…</Typography.Paragraph>}
+            {editFailed && <Alert type="error" showIcon title="角色详情不可用于编辑"
+              description={editFailed instanceof ApiError ? editFailed.message : undefined}
+              action={<Button size="small" disabled={!canEdit || !detailReadable || detail.isFetching}
+                onClick={() => {void detail.refetch()}}>重新读取</Button>} />}
+          </>
+        )}
+        {saveRole.error && !review &&
+          <Alert type="error" showIcon title="角色变更失败"
+            description={saveRole.error.message} />}
+        {review && <Alert type="warning" showIcon title="提交结果需要复核"
+          description={(
+            <>
+              <p>已保留本次修改。核对当前配置后再决定是否提交。</p>
+              {detailAvailable && original && (
+                <ul>
+                  {editKeys.filter(key => review.values[key] !== review.original[key]).map(key => (
+                    <li key={key}>{editLabels[key]}：当前 {original[key] ?? '未设置'}，本次 {review.values[key] ?? '未设置'}</li>
+                  ))}
+                </ul>
+              )}
+              <Button size="small" onClick={applyReviewedChanges}
+                disabled={!detailAvailable || !fieldsWritable}>确认后继续编辑</Button>
+            </>
+          )} />}
+        <Form disabled={!editorWritable || saveRole.isPending || saveDenied} form={roleForm}
+          layout="vertical" onFinish={submitRole}
+          style={editingRole && (!detailAvailable || saveDenied) ? {display: 'none'} : undefined}>
           {!editingRole && (
             <>
-              <Form.Item name="applicationId" label="应用 ID" rules={[{required: true}]}>
+              <Form.Item name="applicationId" label="应用 ID" rules={[{required: true, whitespace: true}]}>
                 <Input />
               </Form.Item>
-              <Form.Item name="roleCode" label="角色编码" rules={[{required: true}]}>
+              <Form.Item name="roleCode" label="角色编码" rules={[{required: true, whitespace: true}]}>
                 <Input />
               </Form.Item>
               <Form.Item name="roleType" label="角色类型" rules={[{required: true}]}>
@@ -317,7 +413,7 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
               </Form.Item>
             </>
           )}
-          <Form.Item name="roleName" label="角色名称" rules={[{required: true}]}>
+          <Form.Item name="roleName" label="角色名称" rules={[{required: true, whitespace: true, max: 200}]}>
             <Input />
           </Form.Item>
           {editingRole && (
@@ -325,14 +421,16 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
               <Select options={statusOptions} />
             </Form.Item>
           )}
-          <Form.Item name="landingRouteId" label="落地路由 ID">
+          <Form.Item name="landingRouteId" label="落地路由 ID" rules={[{pattern: /^[1-9][0-9]{0,18}$/}]}>
             <Input allowClear />
           </Form.Item>
-          <Form.Item name="landingPriority" label="落地优先级" rules={[{required: true, type: 'number', min: 0}]}>
-            <InputNumber min={0} precision={0} style={{width: '100%'}} />
+          <Form.Item name="landingPriority" label="落地优先级"
+            rules={[{required: true, type: 'integer', min: 0, max: 2_147_483_647}]}>
+            <InputNumber min={0} max={2_147_483_647} precision={0} style={{width: '100%'}} />
           </Form.Item>
-          <Form.Item name="maximumAssignmentDays" label="最长任职天数">
-            <InputNumber min={0} precision={0} style={{width: '100%'}} />
+          <Form.Item name="maximumAssignmentDays" label="最长任职天数"
+            rules={[{type: 'integer', min: 1, max: 2_147_483_647}]}>
+            <InputNumber min={1} max={2_147_483_647} precision={0} style={{width: '100%'}} />
           </Form.Item>
         </Form>
       </Modal>
@@ -370,25 +468,26 @@ export const RoleGraphPage = ({applicationId}: RoleGraphPageProps) => {
 
       <Drawer
         open={impactRole !== null}
-        title={impactRole ? `影响分析：${impactRole.roleName}` : ''}
+        title={impactRole ? `角色关系：${impactRole.roleName}` : ''}
         onClose={() => setImpactRole(null)}
         size="large"
       >
-        {impactRole && (() => {
-          const impact = impactByRole.get(impactRole.roleId)
-          if (!impact) return <Typography.Text type="secondary">影响分析加载中...</Typography.Text>
-          return (
+        <PageState loading={impact.isPending} error={impact.error} empty={!impactSummary}>
+          {impactSummary && (
             <Descriptions bordered column={1} size="small">
-              <Descriptions.Item label="角色族">{impact.roleFamily.join(', ') || '-'}</Descriptions.Item>
-              <Descriptions.Item label="激活根">{impact.activationRoots.join(', ') || '-'}</Descriptions.Item>
-              <Descriptions.Item label="有效风险">{impact.effectiveFamilyRisk}</Descriptions.Item>
-              <Descriptions.Item label="权限数量">{impact.permissionCount}</Descriptions.Item>
-              <Descriptions.Item label="冲突">{impact.conflicts.join(', ') || '无'}</Descriptions.Item>
+              <Descriptions.Item label="层级">
+                {impactSummary.activationRoots.includes(impactSummary.roleId) ? 'Root' :
+                  impactSummary.activationRoots.length > 0 ? 'Child' : '未返回激活根'}
+              </Descriptions.Item>
+              <Descriptions.Item label="角色族">{impactSummary.roleFamily.join(', ') || '-'}</Descriptions.Item>
+              <Descriptions.Item label="激活根">{impactSummary.activationRoots.join(', ') || '-'}</Descriptions.Item>
+              <Descriptions.Item label="有效族风险">{impactSummary.effectiveFamilyRisk}</Descriptions.Item>
+              <Descriptions.Item label="权限数">{impactSummary.permissionCount}</Descriptions.Item>
+              <Descriptions.Item label="冲突">{impactSummary.conflicts.join(', ') || '-'}</Descriptions.Item>
             </Descriptions>
-          )
-        })()}
+          )}
+        </PageState>
       </Drawer>
-    </Card>
-    </div>
+    </>
   )
 }

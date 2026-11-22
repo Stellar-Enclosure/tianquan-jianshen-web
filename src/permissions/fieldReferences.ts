@@ -1,3 +1,11 @@
+import {
+  fieldUpdateRoleRequestDTOExpectedRoleVersion,
+  fieldUpdateRoleRequestDTOLandingPriority,
+  fieldUpdateRoleRequestDTOLandingRouteId,
+  fieldUpdateRoleRequestDTOMaximumAssignmentDays,
+  fieldUpdateRoleRequestDTORoleName,
+  fieldUpdateRoleRequestDTOStatus,
+} from '../../.generated/permissions/backend-references'
 import {defineResourceReferences} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import {rolePermissionInputFields} from '../features/role/rolePermissionResources'
 
@@ -611,27 +619,27 @@ export const fieldReferences = defineResourceReferences([
     "usage": "FORM_FIELD"
   },
   {
-    "key": "tianquan-jianshen.field.iam.role.domain.dto.UpdateRoleRequestDTO.expectedRoleVersion",
+    "key": fieldUpdateRoleRequestDTOExpectedRoleVersion,
     "usage": "FORM_FIELD"
   },
   {
-    "key": "tianquan-jianshen.field.iam.role.domain.dto.UpdateRoleRequestDTO.landingPriority",
+    "key": fieldUpdateRoleRequestDTOLandingPriority,
     "usage": "FORM_FIELD"
   },
   {
-    "key": "tianquan-jianshen.field.iam.role.domain.dto.UpdateRoleRequestDTO.landingRouteId",
+    "key": fieldUpdateRoleRequestDTOLandingRouteId,
     "usage": "FORM_FIELD"
   },
   {
-    "key": "tianquan-jianshen.field.iam.role.domain.dto.UpdateRoleRequestDTO.maximumAssignmentDays",
+    "key": fieldUpdateRoleRequestDTOMaximumAssignmentDays,
     "usage": "FORM_FIELD"
   },
   {
-    "key": "tianquan-jianshen.field.iam.role.domain.dto.UpdateRoleRequestDTO.roleName",
+    "key": fieldUpdateRoleRequestDTORoleName,
     "usage": "FORM_FIELD"
   },
   {
-    "key": "tianquan-jianshen.field.iam.role.domain.dto.UpdateRoleRequestDTO.status",
+    "key": fieldUpdateRoleRequestDTOStatus,
     "usage": "FORM_FIELD"
   },
   {
@@ -881,12 +889,12 @@ export const inputFields = {
     "tianquan-jianshen.field.iam.role.domain.dto.CreateRoleRequestDTO.roleType"
   ],
   "UpdateRoleRequestDTO": [
-    "tianquan-jianshen.field.iam.role.domain.dto.UpdateRoleRequestDTO.expectedRoleVersion",
-    "tianquan-jianshen.field.iam.role.domain.dto.UpdateRoleRequestDTO.landingPriority",
-    "tianquan-jianshen.field.iam.role.domain.dto.UpdateRoleRequestDTO.landingRouteId",
-    "tianquan-jianshen.field.iam.role.domain.dto.UpdateRoleRequestDTO.maximumAssignmentDays",
-    "tianquan-jianshen.field.iam.role.domain.dto.UpdateRoleRequestDTO.roleName",
-    "tianquan-jianshen.field.iam.role.domain.dto.UpdateRoleRequestDTO.status"
+    fieldUpdateRoleRequestDTOExpectedRoleVersion,
+    fieldUpdateRoleRequestDTOLandingPriority,
+    fieldUpdateRoleRequestDTOLandingRouteId,
+    fieldUpdateRoleRequestDTOMaximumAssignmentDays,
+    fieldUpdateRoleRequestDTORoleName,
+    fieldUpdateRoleRequestDTOStatus
   ],
   "CreateUserCommandDTO": [
     "tianquan-jianshen.field.iam.user.domain.dto.CreateUserCommandDTO.identitySub",
