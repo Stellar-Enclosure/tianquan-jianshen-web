@@ -17,7 +17,10 @@ export const useCurrentAuthorizationRefresh = () => {
 }
 
 /** Host checks identity and the complete deployment scope before the SDK accepts a permission view. */
-export const CurrentAuthorizationProvider = ({clients, children}: PropsWithChildren<{clients: AdminApiClients}>) => {
+export const CurrentAuthorizationProvider = ({clients, children, onAuthorizationStateChange}: PropsWithChildren<{
+  clients: AdminApiClients
+  onAuthorizationStateChange?: (state: 'authorizing' | 'denied' | 'failed') => void
+}>) => {
   const [binding, setBinding] = useState<PermissionSnapshotContext | null>(null)
   const [phase, setPhase] = useState<'LOADING' | 'READY' | 'LOGIN' | 'FORBIDDEN' | 'FAILED'>('LOADING')
   const [error, setError] = useState<string>()
@@ -28,15 +31,17 @@ export const CurrentAuthorizationProvider = ({clients, children}: PropsWithChild
     serial.current += 1
     pending.current?.abort()
     queryClient.clear()
+    onAuthorizationStateChange?.(next === 'FORBIDDEN' ? 'denied' : 'authorizing')
     setError(undefined)
     setBinding(null)
     setPhase(next)
-  }, [queryClient])
+  }, [queryClient, onAuthorizationStateChange])
   const load = useCallback(async () => {
     pending.current?.abort()
     const controller = new AbortController()
     pending.current = controller
     const attempt = ++serial.current
+    onAuthorizationStateChange?.('authorizing')
     setBinding(null)
     setPhase('LOADING')
     setError(undefined)
@@ -62,12 +67,13 @@ export const CurrentAuthorizationProvider = ({clients, children}: PropsWithChild
     } catch (failure) {
       if (attempt !== serial.current) return
       const status = (failure as {status?: number}).status
+      onAuthorizationStateChange?.(status === 403 ? 'denied' : status === 401 ? 'authorizing' : 'failed')
       setPhase(status === 401 ? 'LOGIN' : status === 403 ? 'FORBIDDEN' : 'FAILED')
       setError(failure instanceof Error ? failure.message : '授权服务暂不可用')
     } finally {
       if (pending.current === controller) pending.current = null
     }
-  }, [clients, clear])
+  }, [clients, clear, onAuthorizationStateChange])
   useEffect(() => {
     const unsubscribeFailure = subscribeAuthorizationFailure(status => clear(status === 401 ? 'LOGIN' : 'FORBIDDEN'))
     const unsubscribeEpoch = clients.authClient.context.subscribe(() => clear('LOGIN'))

@@ -3,7 +3,7 @@ import {CurrentAuthorizationProvider} from '../features/auth/CurrentAuthorizatio
 import {QueryClientProvider} from '@tanstack/react-query'
 import {BrowserRouter, Link, Route, Routes, useNavigate, useParams, useSearchParams} from 'react-router-dom'
 import {Result} from 'antd'
-import {useEffect, useState} from 'react'
+import {useEffect, useState, type PropsWithChildren} from 'react'
 import {AppErrorBoundary, type WorkbenchHost} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {createAdminApiClients} from '../api/adminApiClient'
 import {gatewayAuth, LOGIN_CALLBACK, POPUP_CALLBACK, STANDALONE_LOGIN} from '../features/auth/gatewayAuth'
@@ -11,7 +11,7 @@ import {AuthenticationShell} from '../features/auth/AuthenticationShell'
 import {LoginPage} from '../features/auth/LoginPage'
 import {FeatureApiProvider} from '../features/shared/FeatureApi'
 import {createAdminQueryClient} from './queryClient'
-import {ApplicationRouter} from './router'
+import {ApplicationRouter, JianshenCatalogReporter, useWorkbenchCatalogReset} from './router'
 
 const queryClient = createAdminQueryClient()
 const clients = createAdminApiClients()
@@ -40,6 +40,18 @@ function StandaloneLogin() {
   return <LoginPage startAuthorization={() => gatewayAuth.loginStandalone(registrationId, params.get('reauthenticate') === '1')} />
 }
 
+const WorkbenchAuthorizationBoundary = ({children}: PropsWithChildren) => {
+  const resetCatalog = useWorkbenchCatalogReset()
+  return <CurrentAuthorizationProvider clients={clients} onAuthorizationStateChange={resetCatalog}>
+    <FeatureApiProvider client={clients.featureClient}>
+      <FieldCatalogProvider>
+        <JianshenCatalogReporter />
+        <AuthenticationShell>{children}</AuthenticationShell>
+      </FieldCatalogProvider>
+    </FeatureApiProvider>
+  </CurrentAuthorizationProvider>
+}
+
 type WujieWorkbenchWindow = Window & {
   $wujie?: { props?: { embedded?: boolean; workbenchHost?: WorkbenchHost } }
 }
@@ -60,15 +72,7 @@ export const App = ({
         console.error('[Tianquan-Jianshen] Unhandled error:', error, info.componentStack)
       }}>
         <QueryClientProvider client={queryClient}>
-          <CurrentAuthorizationProvider clients={clients}>
-            <FeatureApiProvider client={clients.featureClient}>
-              <FieldCatalogProvider>
-                <AuthenticationShell>
-                  <ApplicationRouter embedded workbenchHost={resolvedHost} />
-                </AuthenticationShell>
-              </FieldCatalogProvider>
-            </FeatureApiProvider>
-          </CurrentAuthorizationProvider>
+          <ApplicationRouter embedded workbenchHost={resolvedHost} authorizationBoundary={WorkbenchAuthorizationBoundary} />
         </QueryClientProvider>
       </AppErrorBoundary>
     )

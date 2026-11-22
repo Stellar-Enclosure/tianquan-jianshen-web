@@ -5,12 +5,13 @@ import {
   EmbeddedWorkbench,
   EnterpriseLayout,
   type AppCatalogStatus,
+  type AppPageDescriptor,
   type EnterpriseLayoutConfig,
   type Presentation,
   type WorkbenchHost,
 } from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {Navigate, Outlet, Route, RouterProvider, Routes, createMemoryRouter, useNavigate} from 'react-router-dom'
-import {useCallback, useMemo, useState, type PropsWithChildren} from 'react'
+import {createContext, useCallback, useContext, useLayoutEffect, useMemo, useState, type ComponentType, type PropsWithChildren} from 'react'
 import {version} from '../../package.json'
 import {buildJianshenCatalogPages} from '../workbench/routes'
 import {applicationRouteDescriptors, isRouteAllowed, resolveApplicationLanding, visibleNavigation} from './navigation'
@@ -19,12 +20,14 @@ import type {FeatureRouteDescriptor} from '../features/shared/RouteDescriptor'
 export const ApplicationRouter = ({
   embedded = false,
   workbenchHost,
+  authorizationBoundary,
 }: {
   readonly embedded?: boolean
   readonly workbenchHost?: WorkbenchHost
+  readonly authorizationBoundary?: ComponentType<PropsWithChildren>
 }) => {
   if (workbenchHost) {
-    return <JianshenWorkbenchRouter workbenchHost={workbenchHost} />
+    return <JianshenWorkbenchRouter workbenchHost={workbenchHost} authorizationBoundary={authorizationBoundary} />
   }
   return <StandardApplicationRouter embedded={embedded} />
 }
@@ -57,55 +60,83 @@ const JianshenFallbackRoute = () => {
     : <Navigate to={landing} replace />
 }
 
-const JianshenWorkbenchShell = ({ workbenchHost }: { readonly workbenchHost: WorkbenchHost }) => {
+interface WorkbenchCatalog {
+  readonly status: AppCatalogStatus
+  readonly pages: readonly AppPageDescriptor[]
+}
+const emptyPages: readonly AppPageDescriptor[] = []
+const WorkbenchCatalogContext = createContext<(catalog: WorkbenchCatalog) => void>(() => undefined)
+
+/** The authorization gates clear the host catalog before replacing protected content. */
+export const useWorkbenchCatalogReset = () => {
+  const publish = useContext(WorkbenchCatalogContext)
+  return useCallback((status: 'authorizing' | 'denied' | 'failed') => {
+    publish({status, pages: emptyPages})
+  }, [publish])
+}
+
+export const JianshenCatalogReporter = () => {
   const {status, about, snapshot, binding} = useRbac3Authorization()
-  const navigate = useNavigate()
-
+  const publish = useContext(WorkbenchCatalogContext)
   const pages = useMemo(
-    () => (about && snapshot && binding ? buildJianshenCatalogPages(snapshot, binding) : []),
-    [about, snapshot, binding],
+    () => (status === 'READY' && about && snapshot && binding ? buildJianshenCatalogPages(snapshot, binding) : emptyPages),
+    [status, about, snapshot, binding],
   )
+  const catalogStatus: AppCatalogStatus = status === 'ERROR_RETRYABLE' || status === 'ERROR_FATAL'
+    ? 'failed'
+    : status === 'FORBIDDEN_NO_ROUTE'
+      ? 'denied'
+      : status !== 'READY' || !about || !snapshot || !binding
+        ? 'authorizing'
+        : pages.length === 0 ? 'denied' : 'ready'
 
-  const catalogStatus: AppCatalogStatus = useMemo(() => {
-    if (!about || !snapshot || !binding || status === 'UNINITIALIZED' || status === 'LOADING_ABOUT') {
-      return 'authorizing'
-    }
-    if (status === 'ERROR_RETRYABLE' || status === 'ERROR_FATAL') return 'failed'
-    if (status === 'FORBIDDEN_NO_ROUTE' || pages.length === 0) return 'denied'
-    return 'ready'
-  }, [about, snapshot, binding, status, pages.length])
+  useLayoutEffect(() => {publish({status: catalogStatus, pages})}, [publish, catalogStatus, pages])
+  return null
+}
 
+const AuthorizedWorkbenchBoundary = ({children}: PropsWithChildren) => <>
+  <JianshenCatalogReporter />
+  {children}
+</>
+
+const JianshenWorkbenchShell = ({workbenchHost, authorizationBoundary: AuthorizationBoundary = AuthorizedWorkbenchBoundary}: {
+  readonly workbenchHost: WorkbenchHost
+  readonly authorizationBoundary?: ComponentType<PropsWithChildren>
+}) => {
+  const navigate = useNavigate()
+  const [catalog, setCatalog] = useState<WorkbenchCatalog>({status: 'authorizing', pages: emptyPages})
   const handlePresent = useCallback(async (presentation: Presentation) => {
     if (presentation.mode !== 'show') {
-      await navigate('/__workbench/idle', { replace: true })
-      return { ok: true as const }
+      await navigate('/__workbench/idle', {replace: true})
+      return {ok: true as const}
     }
-    const nextPath = presentation.target.path + (presentation.target.search || '')
-    await navigate(nextPath, { replace: true })
-    return { ok: true as const }
+    await navigate(presentation.target.path + (presentation.target.search || ''), {replace: true})
+    return {ok: true as const}
   }, [navigate])
 
   return (
-    <EmbeddedWorkbench
-      host={workbenchHost}
-      status={catalogStatus}
-      pages={pages}
-      onPresent={handlePresent}
-    >
-      <div className="tianquan-jianshen-workbench-outlet" style={{ width: '100%', minWidth: 0 }}>
-        <Outlet />
-      </div>
+    <EmbeddedWorkbench host={workbenchHost} status={catalog.status} pages={catalog.pages} onPresent={handlePresent}>
+      <WorkbenchCatalogContext.Provider value={setCatalog}>
+        <AuthorizationBoundary>
+          <div className="tianquan-jianshen-workbench-outlet" style={{width: '100%', minWidth: 0}}>
+            <Outlet />
+          </div>
+        </AuthorizationBoundary>
+      </WorkbenchCatalogContext.Provider>
     </EmbeddedWorkbench>
   )
 }
 
-const JianshenWorkbenchRouter = ({ workbenchHost }: { readonly workbenchHost: WorkbenchHost }) => {
+const JianshenWorkbenchRouter = ({workbenchHost, authorizationBoundary}: {
+  readonly workbenchHost: WorkbenchHost
+  readonly authorizationBoundary?: ComponentType<PropsWithChildren>
+}) => {
   const [router] = useState(() =>
     createMemoryRouter(
       [
         {
           path: '/',
-          element: <JianshenWorkbenchShell workbenchHost={workbenchHost} />,
+          element: <JianshenWorkbenchShell workbenchHost={workbenchHost} authorizationBoundary={authorizationBoundary} />,
           children: [
             { path: '__workbench/idle', element: null },
             ...applicationRouteDescriptors.map((route) => ({
