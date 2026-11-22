@@ -65,6 +65,7 @@ describe('position administration page', () => {
 
         await waitFor(() => expect(screen.getByText('运营主管')).toBeInTheDocument())
         expect(screen.getByText('岗位')).toBeInTheDocument()
+        expect(screen.getByText('当前返回 1 个岗位')).toBeInTheDocument()
         expect(state.request).toHaveBeenCalledWith(
             '/api/tianquan-jianshen/v1/iam/positions',
             expect.objectContaining({query: {orgUnitId: '1001'}}),

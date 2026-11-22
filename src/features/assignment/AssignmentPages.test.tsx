@@ -1,3 +1,4 @@
+import {ApiError} from '@stellar-enclosure/stellar-enclosure-web-shared'
 vi.mock('../../permissions/FieldCatalog', () => ({useWritableFields: () => true, useWritableFieldKeys: () => true}))
 import {TestAuthorizationProvider, createAuthorizationFixtureClient} from '../../test/authorization'
 import {type Rbac3Client} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
@@ -74,11 +75,13 @@ describe('assignment pages', () => {
       if (path === '/api/tianquan-jianshen/v1/iam/users/42') {
         return {userId: '42', identitySub: 'target-user', status: 'ACTIVE', authVersion: targetAuthVersion}
       }
+      if (path.endsWith('/manageable-users')) return [{userId: '42', identitySub: 'target-user'}]
+      if (path.endsWith('/manageable-roles')) return [{roleId: '81', roleCode: 'AUDITOR', roleName: '审计员'}]
       if (options?.method === 'POST') {
         targetAuthVersion += 1
         return {assignmentId: 'assignment-1'}
       }
-      return [{assignmentId: 'assignment-1', roleId: '81', assignmentType: 'DIRECT', status: 'ACTIVE',
+      return targetAuthVersion === 7 ? [] : [{assignmentId: 'assignment-1', roleId: '81', assignmentType: 'DIRECT', status: 'ACTIVE',
         validFrom: '2026-09-06T00:00:00Z', validTo: null, sourceType: 'MANUAL', sourceId: '7', version: 3}]
     })
     render(<AssignmentListPage userId="42" />, {wrapper: wrapper(request as FeatureApiClient['request'], ['system:role-assignment:manage'])})
@@ -87,12 +90,15 @@ describe('assignment pages', () => {
     const version = await screen.findByRole('spinbutton', {name: '目标用户授权版本'})
     expect(version).toHaveValue('7')
     expect(version).toHaveAttribute('readonly')
-    fireEvent.change(screen.getByLabelText('Role ID'), {target: {value: '81'}})
-    fireEvent.change(screen.getByLabelText('生效时间'), {target: {value: '2026-09-06T13:00'}})
+    const role = screen.getByLabelText('角色')
+    await waitFor(() => expect(role).toBeEnabled())
+    fireEvent.mouseDown(role)
+    fireEvent.click(await screen.findByText('审计员 · AUDITOR'))
+    fireEvent.change(screen.getByLabelText('生效时间'), {target: {value: '2027-09-06T13:00:00+08:00'}})
     fireEvent.click(screen.getByRole('button', {name: '保存资格'}))
     await waitFor(() => expect(request).toHaveBeenCalledWith(
       '/api/tianquan-jianshen/v1/users/42/role-assignments',
-      expect.objectContaining({method: 'POST', body: expect.objectContaining({expectedUserAuthVersion: 7})}),
+      expect.objectContaining({method: 'POST', body: expect.objectContaining({expectedUserAuthVersion: 7, validFrom: '2027-09-06T05:00:00Z'})}),
     ))
     await waitFor(() => expect(screen.getByRole('button', {name: /暂\s*停/})).toBeEnabled())
     fireEvent.click(screen.getByRole('button', {name: /暂\s*停/}))
@@ -101,6 +107,46 @@ describe('assignment pages', () => {
       '/api/tianquan-jianshen/v1/users/42/role-assignments/assignment-1/suspend',
       expect.objectContaining({method: 'POST', body: expect.objectContaining({expectedAssignmentVersion: 3, expectedUserAuthVersion: 8})}),
     ))
+  })
+
+  it('reuses the frozen body and idempotency key after a lost result', async () => {
+    let writes = 0
+    const request = vi.fn(async (path: string, options?: {method?: string; body?: unknown; headers?: Record<string, string>}) => {
+      if (path.endsWith('/manageable-users')) return [{userId: '42', identitySub: 'target-user'}]
+      if (path.endsWith('/manageable-roles')) return [{roleId: '81', roleCode: 'AUDITOR', roleName: '审计员'}]
+      if (path.endsWith('/iam/users/42')) return {userId: '42', identitySub: 'target-user', status: 'ACTIVE', authVersion: writes ? 8 : 7}
+      if (options?.method === 'POST') {
+        if (++writes === 1) throw new ApiError('timeout', 0, 'REQUEST_TIMEOUT')
+        return {assignmentId: '90'}
+      }
+      return []
+    })
+    render(<AssignmentListPage userId="42" />, {wrapper: wrapper(request as FeatureApiClient['request'], ['system:role-assignment:manage'])})
+    const add = await screen.findByRole('button', {name: '新增任职资格'})
+    await waitFor(() => expect(add).toBeEnabled())
+    fireEvent.click(add)
+    const role = screen.getByLabelText('角色')
+    await waitFor(() => expect(role).toBeEnabled())
+    fireEvent.mouseDown(role)
+    fireEvent.click(await screen.findByText('审计员 · AUDITOR'))
+    fireEvent.change(screen.getByLabelText('生效时间'), {target: {value: '2030-11-03T01:30:00-04:00'}})
+    fireEvent.click(screen.getByRole('button', {name: '保存资格'}))
+    fireEvent.click(await screen.findByRole('button', {name: '重试原任职请求'}))
+    await waitFor(() => expect(writes).toBe(2))
+    const calls = request.mock.calls.filter(([, options]) => options?.method === 'POST')
+    expect(calls[0][1]).toEqual(calls[1][1])
+    expect(calls[1][1]?.body).toMatchObject({expectedUserAuthVersion: 7, validFrom: '2030-11-03T05:30:00Z'})
+    await waitFor(() => expect(add).toBeEnabled())
+    fireEvent.click(add)
+    const nextRole = await screen.findByLabelText('角色')
+    await waitFor(() => expect(nextRole).toBeEnabled())
+    fireEvent.mouseDown(nextRole)
+    fireEvent.click(await screen.findByText('审计员 · AUDITOR'))
+    fireEvent.change(screen.getByLabelText('生效时间'), {target: {value: '2031-11-03T01:30:00-04:00'}})
+    fireEvent.click(screen.getByRole('button', {name: '保存资格'}))
+    await waitFor(() => expect(writes).toBe(3))
+    const latest = request.mock.calls.filter(([, options]) => options?.method === 'POST')[2][1]
+    expect(latest?.headers?.['Idempotency-Key']).not.toBe(calls[0][1]?.headers?.['Idempotency-Key'])
   })
 
   it('keeps assignment mutations disabled when the target user version cannot be read', async () => {

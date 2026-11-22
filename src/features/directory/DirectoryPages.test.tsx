@@ -4,15 +4,16 @@ import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {type Rbac3Client} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {render, screen, waitFor} from '@testing-library/react'
 import type {PropsWithChildren} from 'react'
+import {MemoryRouter} from 'react-router-dom'
 import {describe, expect, it, vi} from 'vitest'
 import {type FeatureApiClient, FeatureApiProvider} from '../shared/FeatureApi'
 import {OrgPositionSnapshotPage} from './OrgPositionSnapshotPage'
 import {UserDirectoryPage} from './UserDirectoryPage'
 import {directoryApi} from './directory.api'
 
-const wrapper = ({ children }: PropsWithChildren) => {
+const withPermissions = (permissions: readonly string[]) => ({children}: PropsWithChildren) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const sdk = createAuthorizationFixtureClient({subject:'directory-test',tenantId:'42',permissionCodes:['system:user:read', 'system:directory:sync'],authVersion:1,policyVersion:1}, {}) as unknown as Rbac3Client
+  const sdk = createAuthorizationFixtureClient({subject:'directory-test',tenantId:'42',permissionCodes:permissions,authVersion:1,policyVersion:1}, {}) as unknown as Rbac3Client
   const api: FeatureApiClient = {
     request: async <T,>(path: string) => (path.includes('/users/')
       ? {
@@ -24,13 +25,23 @@ const wrapper = ({ children }: PropsWithChildren) => {
   return (
     <QueryClientProvider client={queryClient}>
         <TestAuthorizationProvider client={sdk}>
-        <FeatureApiProvider client={api}>{children}</FeatureApiProvider>
+        <FeatureApiProvider client={api}><MemoryRouter>{children}</MemoryRouter></FeatureApiProvider>
       </TestAuthorizationProvider>
     </QueryClientProvider>
   )
 }
 
+const wrapper = withPermissions(['system:user:read', 'system:directory:sync'])
+
 describe('directory pages', () => {
+  it('opens the existing assignment route with the exact string user id', async () => {
+    render(<UserDirectoryPage initialUserId="9007199254740999" />, {
+      wrapper: withPermissions(['system:user:read', 'system:role-assignment:read']),
+    })
+    expect(await screen.findByRole('link', {name: '角色任职'}))
+      .toHaveAttribute('href', '/iam/users/9007199254740999/role-assignments')
+  })
+
   it('maps organization and position reads to their IAM controller paths', async () => {
     const request = vi.fn().mockResolvedValue([])
     const api = directoryApi({request})

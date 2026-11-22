@@ -2,10 +2,10 @@ import {useWritableFields} from '../../permissions/FieldCatalog'
 import {ResourceGuard} from '../../permissions/ResourceGuard'
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {Alert, Button, Card, Descriptions, Drawer, Form, Input, Popconfirm, Select, Space, Table, Tag, Typography} from 'antd'
+import {Alert, Button, Descriptions, Drawer, Form, Input, Popconfirm, Select, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
 import {useSearchParams} from 'react-router-dom'
-import {PageState, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
+import {WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {directoryApi, type OrganizationCommand, type OrganizationUpdateCommand, type OrganizationView} from './directory.api'
 
@@ -123,20 +123,9 @@ export const OrganizationPage = () => {
 
     return (
         <div style={{width: '100%'}}>
-        <Card
-            title={!embedded ? '组织' : undefined}
-            extra={(
-                <Space>
-                    <Button onClick={() => {void query.refetch()}}>刷新</Button>
-                    <ResourceGuard resourceKey="tianquan-jianshen.button.OrganizationPage.manage1">
-                        <Button type="primary" onClick={openCreate}>新增组织</Button>
-                    </ResourceGuard>
-                </Space>
-            )}
-        >
-            <Typography.Paragraph type="secondary">
-                维护 Tianquan-Jianshen 手工组织层级；租户范围由当前授权上下文决定，组织节点 ID 始终按字符串展示。
-            </Typography.Paragraph>
+        <WorkspaceList
+          ariaLabel="组织目录"
+          filters={(
             <Form
                 form={filterForm}
                 layout="inline"
@@ -160,6 +149,15 @@ export const OrganizationPage = () => {
                     </Space>
                 </Form.Item>
             </Form>
+          )}
+          toolbar={(
+            <Space wrap>
+              {!embedded && <Typography.Text strong>组织</Typography.Text>}
+              {query.data && <Typography.Text type="secondary">当前返回 {query.data.length} 个组织</Typography.Text>}
+              <Button onClick={() => {void query.refetch()}}>刷新组织</Button>
+              <ResourceGuard resourceKey="tianquan-jianshen.button.OrganizationPage.manage1">
+                <Button type="primary" onClick={openCreate}>新增组织</Button>
+              </ResourceGuard>
             {mutationError && (
                 <Alert
                     type="error"
@@ -169,13 +167,16 @@ export const OrganizationPage = () => {
                     style={{marginBottom: 16}}
                 />
             )}
-            <PageState
-                loading={query.isPending}
-                error={query.error}
-                empty={query.data?.length === 0}
-                emptyDescription="暂无组织"
-                onRetry={() => {void query.refetch()}}
-            >
+            </Space>
+          )}
+          pageState={{
+            loading: query.isPending,
+            error: query.error,
+            empty: query.data?.length === 0,
+            emptyDescription: '暂无组织',
+            onRetry: () => {void query.refetch()},
+          }}
+          table={(
                 <Table<OrganizationView>
                     rowKey="orgUnitId"
                     dataSource={query.data ?? []}
@@ -190,6 +191,7 @@ export const OrganizationPage = () => {
                         {title: '组织编码', dataIndex: 'code'},
                         {title: '类型', dataIndex: 'type'},
                         {title: '路径', dataIndex: 'path'},
+                        {title: '上级组织 ID', dataIndex: 'parentId', render: (value: string | null) => value ?? '—'},
                         {title: '层级', dataIndex: 'depth'},
                         {title: '状态', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag>},
                         {title: '版本', dataIndex: 'version'},
@@ -204,7 +206,8 @@ export const OrganizationPage = () => {
                         },
                     ]}
                 />
-            </PageState>
+          )}
+        />
             <Drawer
                 title={editingOrganization ? `编辑组织：${editingOrganization.name}` : selectedOrganization ? `组织：${selectedOrganization.name}` : '新增组织'}
                 open={editorOpen || selectedOrganization !== null}
@@ -254,7 +257,8 @@ export const OrganizationPage = () => {
                         <ResourceGuard resourceKey="tianquan-jianshen.button.OrganizationPage.manage2">
                             <Space>
                                 {selectedOrganization.snapshotId === null && (
-                                    <Button onClick={() => openEdit(selectedOrganization)}>编辑</Button>
+                                    <Button disabled={!Number.isSafeInteger(selectedOrganization.version) || selectedOrganization.version < 0}
+                                      onClick={() => openEdit(selectedOrganization)}>编辑</Button>
                                 )}
                                 {selectedOrganization.snapshotId === null && selectedOrganization.status === 'ACTIVE' && (
                                     <Popconfirm
@@ -263,7 +267,7 @@ export const OrganizationPage = () => {
                                         cancelText="取消"
                                         onConfirm={() => archive.mutate(selectedOrganization)}
                                     >
-                                        <Button danger loading={archive.isPending}>归档</Button>
+                                        <Button danger loading={archive.isPending} disabled={!Number.isSafeInteger(selectedOrganization.version) || selectedOrganization.version < 0}>归档</Button>
                                     </Popconfirm>
                                 )}
                             </Space>
@@ -271,7 +275,6 @@ export const OrganizationPage = () => {
                     </Space>
                 ) : null}
             </Drawer>
-        </Card>
         </div>
     )
 }

@@ -5,6 +5,8 @@ import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianqu
 import {PageState, WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {Button, Card, Descriptions, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
+import {Link} from 'react-router-dom'
+import {permissionContextKey} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {
   directoryApi,
@@ -42,8 +44,13 @@ const emptyFilter: UserDirectoryFilter = {
 const userIdentity = (user: UserDirectoryView) => user.identitySub || user.username || user.userId
 
 export const UserDirectoryPage = ({initialUserId = ''}: UserDirectoryPageProps) => {
+  const {status, binding} = useRbac3Authorization()
+  const contextKey = status === 'READY' && binding ? permissionContextKey(binding) : null
+  return <UserDirectory key={JSON.stringify([contextKey, initialUserId])} contextKey={contextKey} initialUserId={initialUserId} />
+}
+
+const UserDirectory = ({initialUserId, contextKey}: {initialUserId: string; contextKey: string | null}) => {
   const {embedded} = useEmbeddedWorkbench()
-  const {status} = useRbac3Authorization()
   const {effectiveTenantId} = useFeatureTenantContext()
   const api = directoryApi(useFeatureApi())
   const queryClient = useQueryClient()
@@ -58,14 +65,14 @@ export const UserDirectoryPage = ({initialUserId = ''}: UserDirectoryPageProps) 
   const tenant = effectiveTenantId ?? 'none'
 
   const detail = useQuery({
-    queryKey: ['tianquan-jianshen', 'directory-user', tenant, userId.trim()],
+    queryKey: ['tianquan-jianshen', 'directory-user', contextKey, tenant, userId.trim()],
     queryFn: () => api.user(userId.trim()),
-    enabled: status === 'READY' && userId.trim().length > 0,
+    enabled: contextKey !== null && userId.trim().length > 0,
   })
   const users = useQuery({
-    queryKey: ['tianquan-jianshen', 'directory-users', tenant, submittedFilter],
+    queryKey: ['tianquan-jianshen', 'directory-users', contextKey, tenant, submittedFilter],
     queryFn: () => api.users(submittedFilter),
-    enabled: status === 'READY' && listMode,
+    enabled: contextKey !== null && listMode,
   })
 
   const refreshUsers = async () => {
@@ -141,7 +148,7 @@ export const UserDirectoryPage = ({initialUserId = ''}: UserDirectoryPageProps) 
     }
   }
 
-  const displayUser = detail.data
+  const displayUser = detail.data?.userId === userId.trim() ? detail.data : undefined
   const mutationError = saveUser.error ?? changeStatus.error ?? deleteUser.error
 
   return (
@@ -182,6 +189,9 @@ export const UserDirectoryPage = ({initialUserId = ''}: UserDirectoryPageProps) 
                   <Descriptions.Item label="Auth Version">{displayUser.authVersion}</Descriptions.Item>
                   <Descriptions.Item label="目录快照版本">{displayUser.directorySnapshotVersion ?? '-'}</Descriptions.Item>
                 </Descriptions>
+                <ResourceGuard resourceKey="tianquan-jianshen.page.assignments">
+                  <Link to={`/iam/users/${encodeURIComponent(displayUser.userId)}/role-assignments`}>角色任职</Link>
+                </ResourceGuard>
                 <UserRelationsPanel userId={displayUser.userId} authVersion={displayUser.authVersion} />
               </>
             )}
@@ -258,6 +268,9 @@ export const UserDirectoryPage = ({initialUserId = ''}: UserDirectoryPageProps) 
                   render: (_value: unknown, user: UserDirectoryView) => (
                     <Space>
                       <Button size="small" onClick={() => { setUserId(user.userId); setDraftUserId(user.userId) }}>详情</Button>
+                      <ResourceGuard resourceKey="tianquan-jianshen.page.assignments">
+                        <Link to={`/iam/users/${encodeURIComponent(user.userId)}/role-assignments`}>角色任职</Link>
+                      </ResourceGuard>
                       <ResourceGuard resourceKey="tianquan-jianshen.button.UserDirectoryPage.manage2">
                         <Button size="small" onClick={() => openEdit(user)}>编辑绑定</Button>
                         <Popconfirm title="确认归档该用户成员？" onConfirm={() => deleteUser.mutate(user)}>

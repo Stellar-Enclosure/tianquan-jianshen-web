@@ -140,7 +140,7 @@ export const PositionPage = () => {
                 toolbar={
                     <Space direction="vertical" size={8} style={{width: '100%'}}>
                         <Space style={{width: '100%', justifyContent: 'space-between'}} wrap>
-                            {!embedded ? <Typography.Text strong>岗位</Typography.Text> : <span />}
+                            {!embedded && <Typography.Text strong>岗位</Typography.Text>}
                             <Space>
                                 <Button onClick={() => {void query.refetch()}}>刷新</Button>
                                 <ResourceGuard resourceKey="tianquan-jianshen.button.PositionPage.manage1">
@@ -148,9 +148,7 @@ export const PositionPage = () => {
                                 </ResourceGuard>
                             </Space>
                         </Space>
-                        <Typography.Text type="secondary">
-                            维护 Tianquan-Jianshen 手工岗位；每个岗位必须绑定有效组织，租户和授权范围由当前上下文确定。
-                        </Typography.Text>
+                        {query.data && <Typography.Text type="secondary">当前返回 {query.data.length} 个岗位</Typography.Text>}
                         {mutationError && (
                             <Alert
                                 type="error"
@@ -242,7 +240,8 @@ export const PositionPage = () => {
                         <ResourceGuard resourceKey="tianquan-jianshen.button.PositionPage.manage2">
                             <Space>
                                 {selectedPosition.snapshotId === null && (
-                                    <Button onClick={() => openEdit(selectedPosition)}>编辑</Button>
+                                    <Button disabled={!Number.isSafeInteger(selectedPosition.version) || selectedPosition.version < 0}
+                                      onClick={() => openEdit(selectedPosition)}>编辑</Button>
                                 )}
                                 {selectedPosition.snapshotId === null && selectedPosition.status === 'ACTIVE' && (
                                     <Popconfirm
@@ -251,7 +250,7 @@ export const PositionPage = () => {
                                         cancelText="取消"
                                         onConfirm={() => archive.mutate(selectedPosition)}
                                     >
-                                        <Button danger loading={archive.isPending}>归档</Button>
+                                        <Button danger loading={archive.isPending} disabled={!Number.isSafeInteger(selectedPosition.version) || selectedPosition.version < 0}>归档</Button>
                                     </Popconfirm>
                                 )}
                             </Space>

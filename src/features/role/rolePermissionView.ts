@@ -1,9 +1,12 @@
 import {isPermissionRequirement, type PermissionRequirement} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import type {Definition, DefinitionDetail} from '../registration/registration.api'
+import {canonicalUtcInstant as canonicalGrantInstant, utcInstantNanos} from '../shared/utcInstants'
 import type {RolePermissionGrantView} from './role.api'
 
 export const RESOURCE_DIMENSIONS = ['PAGE', 'MENU', 'BUTTON', 'FIELD', 'API'] as const
 export type ResourceDimension = typeof RESOURCE_DIMENSIONS[number]
+
+export {canonicalGrantInstant}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -94,35 +97,13 @@ export const rebaseGrantCodes = (baseline: readonly string[], intended: readonly
 export interface GrantPeriod {readonly validFrom: string | null; readonly validTo: string | null}
 export interface GrantPeriodEdits {readonly from?: string; readonly to?: string}
 
-const ISO_WITH_OFFSET = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d{1,9})?(Z|([+-])(\d{2}):(\d{2}))$/
-
-/** Moves whole seconds to UTC and keeps the supplied fractional digits. */
-export const canonicalGrantInstant = (value: string): string | undefined => {
-  const match = ISO_WITH_OFFSET.exec(value.trim())
-  if (!match) return undefined
-  const [, local, fraction, , offsetSign, hours, minutes] = match
-  const localMillis = Date.parse(local + 'Z')
-  if (!Number.isFinite(localMillis) || new Date(localMillis).toISOString().slice(0, 19) !== local) return undefined
-  const hoursNumber = Number(hours ?? 0)
-  const minutesNumber = Number(minutes ?? 0)
-  if (hoursNumber > 18 || minutesNumber >= 60 || (hoursNumber === 18 && minutesNumber > 0)) return undefined
-  const offset = (hoursNumber * 60 + minutesNumber) * (offsetSign === '-' ? -1 : 1)
-  const utc = new Date(localMillis - offset * 60_000).toISOString()
-  return /^\d{4}-/.test(utc) ? utc.slice(0, 19) + (fraction ?? '') + 'Z' : undefined
-}
-
-const instantNanos = (utc: string): bigint => {
-  const fractional = utc.slice(19, -1).replace(/^\./, '').padEnd(9, '0')
-  return BigInt(Date.parse(utc.slice(0, 19) + 'Z')) * 1_000_000n + BigInt(fractional)
-}
-
 export const grantWindow = (original: GrantPeriod | undefined, edits: GrantPeriodEdits, now = Date.now()): GrantPeriod | undefined => {
   const from = edits.from ?? original?.validFrom ?? ''
   const to = edits.to ?? original?.validTo ?? ''
   const utcFrom = from.trim() ? canonicalGrantInstant(from) : null
   const utcTo = to.trim() ? canonicalGrantInstant(to) : null
   if (utcFrom === undefined || utcTo === undefined) return undefined
-  if (utcTo && instantNanos(utcTo) <= (utcFrom ? instantNanos(utcFrom) : BigInt(now) * 1_000_000n)) return undefined
+  if (utcTo && utcInstantNanos(utcTo) <= (utcFrom ? utcInstantNanos(utcFrom) : BigInt(now) * 1_000_000n)) return undefined
   return {
     validFrom: edits.from === undefined ? original?.validFrom ?? null : utcFrom,
     validTo: edits.to === undefined ? original?.validTo ?? null : utcTo,

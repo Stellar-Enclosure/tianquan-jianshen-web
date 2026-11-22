@@ -64,6 +64,7 @@ describe('organization administration page', () => {
 
         await waitFor(() => expect(screen.getByText('总部')).toBeInTheDocument())
         expect(screen.getByText('组织')).toBeInTheDocument()
+        expect(screen.getByRole('region', {name: '组织目录'}).querySelector('[data-region="query"]')).not.toBeNull()
         expect(state.request).toHaveBeenCalledWith(
             '/api/tianquan-jianshen/v1/iam/organizations',
             expect.anything(),
