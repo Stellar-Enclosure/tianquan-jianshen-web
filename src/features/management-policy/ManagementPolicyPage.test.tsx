@@ -78,6 +78,22 @@ describe('management policy page', () => {
     expect(screen.getByText('ASSIGN, REVOKE')).toBeInTheDocument()
   })
 
+  it('keeps directory denial distinct from an empty manageable role list', async () => {
+    const sdk = createAuthorizationFixtureClient({subject:'policy-test',tenantId:'9',permissionCodes:['system:management-policy:read', 'system:management-policy:manage'],authVersion:1,policyVersion:1}, {}) as unknown as Rbac3Client
+    const api: FeatureApiClient = {request: async <T,>(path: string) => {
+      if (path.endsWith('/manageable-users')) throw new Error('PERMISSION_DENIED')
+      if (path.endsWith('/management-capabilities/me')) return {policyIds: [], operations: [], activationRootRoleIds: []} as T
+      return [] as T
+    }}
+    render(<QueryClientProvider client={new QueryClient({defaultOptions: {queries: {retry: false}}})}>
+      <TestAuthorizationProvider client={sdk}><FeatureApiProvider client={api}><ManagementPolicyPage /></FeatureApiProvider></TestAuthorizationProvider>
+    </QueryClientProvider>)
+    fireEvent.click(await screen.findByRole('button', {name: '新增完整策略'}))
+    await screen.findByText('可管理用户读取失败')
+    expect(screen.getByText('可管理角色 0 个')).toBeInTheDocument()
+    expect(screen.queryByText('可管理用户 0 个')).not.toBeInTheDocument()
+  })
+
   it('maps policy detail and capability target reads to their controller paths', async () => {
     const request = vi.fn().mockResolvedValue({})
     const api = managementPolicyApi({request})

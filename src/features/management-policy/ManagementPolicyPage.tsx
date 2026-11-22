@@ -1,7 +1,7 @@
 import {ResourceGuard} from '../../permissions/ResourceGuard'
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {Alert, Button, Card, Descriptions, Drawer, Popconfirm, Space, Table, Tag, Typography} from 'antd'
+import {Alert, Button, Card, Descriptions, Drawer, Input, Popconfirm, Select, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {PageState, useEmbeddedWorkbench, useWorkbenchLeaveGuard} from '@stellar-enclosure/stellar-enclosure-web-shared'
@@ -15,7 +15,10 @@ export const ManagementPolicyPage = () => {
   const api = managementPolicyApi(useFeatureApi())
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [filterStatus, setFilterStatus] = useState<string>()
   const [selected, setSelected] = useState<ManagementPolicyView | null>(null)
+  const [editBaseline, setEditBaseline] = useState<ManagementPolicyView | null>(null)
   const queryKey = ['tianquan-jianshen', 'management-policies', effectiveTenantId ?? 'none']
   const query = useQuery({ queryKey, queryFn: api.list, enabled: status === 'READY' })
   const capabilities = useQuery({
@@ -26,7 +29,7 @@ export const ManagementPolicyPage = () => {
   const detail = useQuery({
     queryKey: ['tianquan-jianshen', 'management-policy', effectiveTenantId ?? 'none', selected?.policyId ?? 'none'],
     queryFn: () => api.get(selected!.policyId),
-    enabled: status === 'READY' && selected !== null,
+    enabled: status === 'READY' && selected !== null && !open,
   })
   const manageableUsers = useQuery({
     queryKey: ['tianquan-jianshen', 'manageable-users', effectiveTenantId ?? 'none'],
@@ -44,18 +47,34 @@ export const ManagementPolicyPage = () => {
   ].map((key) => queryClient.invalidateQueries({
     queryKey: ['tianquan-jianshen', key, effectiveTenantId ?? 'none'],
   })))
+  const loadEdit = useMutation({mutationFn: (policyId: string) => api.get(policyId)})
+  const loadEditBaseline = (policyId: string) => loadEdit.mutate(policyId, {
+    onSuccess: response => {
+      if (response.policyId === policyId && isPolicyVersion(response.version)) setEditBaseline(response)
+    },
+  })
   const save = useMutation({
     mutationFn: (command: SaveManagementPolicyCommand) => selected
-      ? api.update(selected, command, crypto.randomUUID())
+      ? api.update(requirePolicyVersion(editBaseline), command, crypto.randomUUID())
       : api.create(command, crypto.randomUUID()),
-    onSuccess: async () => { await refreshPolicyViews(); setOpen(false); setSelected(null) },
+    onSuccess: async () => { await refreshPolicyViews(); close() },
   })
   const disable = useMutation({
-    mutationFn: (policy: ManagementPolicyView) => api.disable(policy, crypto.randomUUID()),
+    mutationFn: (policy: ManagementPolicyView) => api.disable(requirePolicyVersion(policy), crypto.randomUUID()),
     onSuccess: refreshPolicyViews,
   })
-  const edit = (policy: ManagementPolicyView | null) => { setSelected(policy); setOpen(true) }
+  const close = () => {setOpen(false); setSelected(null); setEditBaseline(null); loadEdit.reset()}
+  const edit = (policy: ManagementPolicyView | null) => {
+    setSelected(policy)
+    setOpen(true)
+    setEditBaseline(null)
+    if (policy) loadEditBaseline(policy.policyId)
+  }
   const mutationError = save.error ?? disable.error
+  const policies = query.data ?? []
+  const searchTerm = search.trim().toLowerCase()
+  const filtered = policies.filter(row => (!filterStatus || row.status === filterStatus)
+    && (!searchTerm || [row.policyCode, row.name].some(value => value.toLowerCase().includes(searchTerm))))
   useWorkbenchLeaveGuard(
     activeTabKey ?? 'jianshen:management-policies',
     {dirty: open, pendingMutation: save.isPending || disable.isPending},
@@ -88,11 +107,17 @@ export const ManagementPolicyPage = () => {
           style={{marginBottom: 16}}
         />
       )}
-      <PageState loading={query.isPending} error={query.error} empty={query.data?.length === 0} onRetry={() => {void query.refetch()}}>
+      <Space wrap style={{marginBottom: 16}}>
+        <Input.Search allowClear value={search} onChange={event => setSearch(event.target.value)} aria-label="搜索策略" placeholder="按策略编码或名称筛选" />
+        <Select allowClear value={filterStatus} onChange={setFilterStatus} aria-label="策略状态" placeholder="全部状态"
+          style={{minWidth: 140}} options={[...new Set(policies.map(row => row.status))].map(status => ({value: status, label: status}))} />
+        {query.isSuccess && <Typography.Text type="secondary">匹配 {filtered.length} / {policies.length} 条策略</Typography.Text>}
+      </Space>
+      <PageState loading={query.isPending} error={query.error} empty={filtered.length === 0} emptyDescription="没有匹配的委托策略" onRetry={() => {void query.refetch()}}>
         <Table<ManagementPolicyView>
           rowKey="policyId"
-          dataSource={query.data ?? []}
-          pagination={false}
+          dataSource={filtered}
+          pagination={{pageSize: 20}}
           scroll={{x: 'max-content'}}
           columns={[
             { title: '编码', dataIndex: 'policyCode' },
@@ -108,7 +133,7 @@ export const ManagementPolicyPage = () => {
                   <Button size="small" onClick={() => setSelected(row)}>查看详情</Button>
                   <ResourceGuard resourceKey="tianquan-jianshen.button.ManagementPolicyPage.manage2">
                     <Button size="small" onClick={() => edit(row)}>编辑</Button>
-                    {row.status === 'ACTIVE' && <Popconfirm title="确认禁用并保留历史？" onConfirm={() => disable.mutate(row)}><Button danger size="small">禁用</Button></Popconfirm>}
+                    {row.status === 'ACTIVE' && <Popconfirm disabled={!isPolicyVersion(row.version) || disable.isPending} title="确认禁用并保留历史？" onConfirm={() => disable.mutate(row)}><Button disabled={!isPolicyVersion(row.version) || disable.isPending} danger size="small">禁用</Button></Popconfirm>}
                   </ResourceGuard>
                 </Space>
               ),
@@ -118,14 +143,21 @@ export const ManagementPolicyPage = () => {
       </PageState>
       {open && (
         <Alert
-          type="info"
+          type={manageableUsers.isError || manageableRoles.isError ? "warning" : "info"}
           showIcon
-          title={`可选管理对象：用户 ${manageableUsers.data?.length ?? 0} 个，角色 ${manageableRoles.data?.length ?? 0} 个`}
-          description={manageableUsers.error || manageableRoles.error ? '管理对象目录读取失败，仍可按后端合同填写 Subject 和 Scope；保存时服务端会再次校验范围。' : undefined}
+          title="当前操作者的管理对象"
+          description={<Space wrap>
+            <span>{manageableUsers.isError ? '可管理用户读取失败' : manageableUsers.data ? `可管理用户 ${manageableUsers.data.length} 个` : '正在读取可管理用户'}</span>
+            <span>{manageableRoles.isError ? '可管理角色读取失败' : manageableRoles.data ? `可管理角色 ${manageableRoles.data.length} 个` : '正在读取可管理角色'}</span>
+          </Space>}
           style={{marginTop: 16}}
         />
       )}
-      <ManagementPolicyEditor open={open} policy={selected} saving={save.isPending} onCancel={() => { setOpen(false); setSelected(null) }} onSave={save.mutate} />
+      {open && selected && !editBaseline && <Alert type={loadEdit.isPending ? 'info' : 'error'}
+        title={loadEdit.isPending ? '正在读取委托策略详情' : '委托策略详情或版本无法读取'}
+        action={!loadEdit.isPending && <Button size="small" onClick={() => loadEditBaseline(selected.policyId)}>重试</Button>}
+        closable onClose={close} />}
+      <ManagementPolicyEditor open={open && (!selected || Boolean(editBaseline))} policy={editBaseline} saving={save.isPending} onCancel={close} onSave={save.mutate} />
       <Drawer
         title={selected ? `委托策略：${selected.policyCode}` : ''}
         open={selected !== null && !open}
@@ -149,6 +181,8 @@ export const ManagementPolicyPage = () => {
               <Descriptions.Item label="Scope">{detail.data.scopes.map((item) => `${item.type}:${item.referenceId ?? ''}`).join(', ')}</Descriptions.Item>
               <Descriptions.Item label="激活根角色">{detail.data.activationRootRoleIds.join(', ')}</Descriptions.Item>
               <Descriptions.Item label="Operation">{detail.data.operations.join(', ')}</Descriptions.Item>
+              <Descriptions.Item label="生效时点">{detail.data.validFrom}</Descriptions.Item>
+              <Descriptions.Item label="截止时点">{detail.data.validTo ?? '无截止'}</Descriptions.Item>
               <Descriptions.Item label="版本">{detail.data.version}</Descriptions.Item>
             </Descriptions>
           )}
@@ -157,4 +191,12 @@ export const ManagementPolicyPage = () => {
     </Card>
     </div>
   )
+}
+
+
+const isPolicyVersion = (version: number): boolean => Number.isSafeInteger(version) && version >= 0
+
+const requirePolicyVersion = (policy: ManagementPolicyView | null): ManagementPolicyView => {
+  if (!policy || !isPolicyVersion(policy.version)) throw new Error('请重新读取委托策略版本')
+  return policy
 }

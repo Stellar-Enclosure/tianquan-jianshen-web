@@ -1,11 +1,12 @@
 import {useWritableFields} from '../../permissions/FieldCatalog'
 import {CatalogScopePicker, useCatalogScope} from '../registration/CatalogScopePicker'
-import {catalogScopeKey, type CatalogScope} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
+import {allowsSnapshotRequirement, catalogScopeKey, permissionContextKey, type CatalogScope} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import {ResourceGuard, useResourcePermission} from '../../permissions/ResourceGuard'
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Card, Form, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag, Typography} from 'antd'
 import {useState} from 'react'
+import {permissionSystemFieldRuleRead} from '../../../.generated/permissions/backend-references'
 import {PageState, useEmbeddedWorkbench, useWorkbenchLeaveGuard} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {
@@ -13,6 +14,7 @@ import {
   type CardinalityCommand,
   type DataRuleCommand,
   type DataRuleView,
+  type FieldRuleView,
   type OperationSodRuleCommand,
   type OperationSodRuleView,
   type PrerequisiteGroupCommand,
@@ -226,7 +228,7 @@ const commandFor = (kind: RuleKind, values: ConstraintFormValues, target?: Catal
 
 export const ConstraintPage = () => {
   const {embedded, activeTabKey} = useEmbeddedWorkbench()
-  const {status} = useRbac3Authorization()
+  const {status, binding, snapshot} = useRbac3Authorization()
   const {effectiveTenantId} = useFeatureTenantContext()
   const api = constraintApi(useFeatureApi())
   const queryClient = useQueryClient()
@@ -235,6 +237,8 @@ export const ConstraintPage = () => {
   const canReadSod = useResourcePermission('tianquan-jianshen.component.ConstraintPage.sod')
   const canReadData = useResourcePermission('tianquan-jianshen.component.ConstraintPage.data')
   const canReadOperations = useResourcePermission('tianquan-jianshen.component.ConstraintPage.operation')
+  const fieldContext = enabled && binding && allowsSnapshotRequirement(snapshot, binding, {mode: 'ALL', codes: [permissionSystemFieldRuleRead]})
+    ? permissionContextKey(binding) : null
   const scope = useCatalogScope(undefined, canReadData)
   const target = scope.selected?.scope
   const [editor, setEditor] = useState<EditorState | null>(null)
@@ -248,6 +252,7 @@ export const ConstraintPage = () => {
   const sod = useQuery({queryKey: ['tianquan-jianshen', 'sod', tenant], queryFn: api.sodSets, enabled: enabled && canReadSod})
   const data = useQuery({queryKey: ['tianquan-jianshen', 'data-rules', tenant, target && catalogScopeKey(target)], queryFn: () => api.dataRules(target!), enabled: enabled && canReadData && Boolean(target)})
   const operations = useQuery({queryKey: ['tianquan-jianshen', 'operation-sod', tenant], queryFn: api.operationSodRules, enabled: enabled && canReadOperations})
+  const fields = useQuery({queryKey: ['tianquan-jianshen', 'field-rules', fieldContext], queryFn: api.fieldRules, enabled: fieldContext !== null})
   const save = useMutation({
     mutationFn: ({kind, rowId, values, target: frozenTarget}: RuleSaveInput) => {
       if (kind === 'sod') {
@@ -321,7 +326,7 @@ export const ConstraintPage = () => {
       <Tabs items={[
         {
           key: 'sod',
-          label: `SSD / DSD (${sod.data?.length ?? 0})`,
+          label: '任职 / 激活 · SSD / DSD',
           children: (
             <PageState loading={sod.isPending} error={sod.error} empty={sod.data?.length === 0} onRetry={() => {void sod.refetch()}}>
               <Table<SodSetView>
@@ -337,6 +342,7 @@ export const ConstraintPage = () => {
                 columns={[
                   {title: '集合编码', dataIndex: 'setCode'},
                   {title: '类型', dataIndex: 'constraintType', render: (value: string) => <Tag>{value}</Tag>},
+                  {title: '校验阶段', render: (_value: unknown, row: SodSetView) => row.constraintType === 'DSD' ? '会话激活' : '任职分配'},
                   {title: 'APP', dataIndex: 'applicationId'},
                   {title: '最大同时激活', dataIndex: 'maximumActiveRoles'},
                   {title: '激活根角色', dataIndex: 'roleIds', render: (ids: readonly string[]) => ids.join(', ')},
@@ -350,7 +356,7 @@ export const ConstraintPage = () => {
         },
         {
           key: 'data',
-          label: `数据规则 (${data.data?.length ?? 0})`,
+          label: '请求决策 · 数据规则',
           children: (
             <><CatalogScopePicker value={scope} /><PageState loading={Boolean(target) && data.isPending} error={data.error} empty={data.data?.length === 0} onRetry={() => {void data.refetch()}}>
               <Table<DataRuleView>
@@ -376,7 +382,7 @@ export const ConstraintPage = () => {
 
         {
           key: 'operation',
-          label: `Operation SOD (${operations.data?.length ?? 0})`,
+          label: '业务动作 · Operation SOD',
           children: (
             <PageState loading={operations.isPending} error={operations.error} empty={operations.data?.length === 0} onRetry={() => {void operations.refetch()}}>
               <Table<OperationSodRuleView>
@@ -398,8 +404,30 @@ export const ConstraintPage = () => {
             </PageState>
           ),
         },
-      ].filter(item => ({sod: canReadSod, data: canReadData, operation: canReadOperations})[item.key])} />
-      <Card size="small" title="角色级约束配置" style={{marginTop: 16}}>
+        {
+          key: 'field',
+          label: '请求决策 · 字段规则（只读）',
+          children: (
+            <PageState loading={fields.isPending} error={fields.error} empty={fields.data?.length === 0} onRetry={() => {void fields.refetch()}}>
+              <Table<FieldRuleView>
+                rowKey="ruleId"
+                dataSource={fields.data ?? []}
+                scroll={{x: 'max-content'}}
+                columns={[
+                  {title: '应用 ID', dataIndex: 'applicationId'},
+                  {title: '角色 ID', dataIndex: 'roleId'},
+                  {title: '权限 ID', dataIndex: 'permissionId'},
+                  {title: '字段定义 ID', dataIndex: 'fieldDefinitionId'},
+                  {title: '访问级别', dataIndex: 'accessLevel'},
+                  {title: '状态', dataIndex: 'status'},
+                  {title: '版本', dataIndex: 'version'},
+                ]}
+              />
+            </PageState>
+          ),
+        },
+      ].filter(item => ({sod: canReadSod, data: canReadData, operation: canReadOperations, field: fieldContext !== null})[item.key])} />
+      <Card size="small" title="任职分配 · 角色前置和基数约束" style={{marginTop: 16}}>
         <Typography.Paragraph type="secondary">
           前置条件组和角色容量没有独立列表接口，按角色 ID 直接替换服务端配置；版本号用于防止覆盖其他管理员的修改。
         </Typography.Paragraph>

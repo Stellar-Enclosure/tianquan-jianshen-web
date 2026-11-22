@@ -109,3 +109,17 @@ it('does not query a catalog or unrelated constraint collections for a SOD-only 
   await waitFor(() => expect(test.request).toHaveBeenCalledTimes(1))
   expect(test.request).toHaveBeenCalledWith('/api/tianquan-jianshen/v1/iam/policies/sod-sets', {})
 })
+
+it('reads FIELD rules only with field-rule read permission and exposes no write action', async () => {
+  const {catalogWrapper} = await import('../../test/catalog')
+  const test = catalogWrapper(path => {
+    if (!path.endsWith('/field-rules')) throw new Error('Unexpected read')
+    return [{ruleId: '17', applicationId: '71', roleId: '301', permissionId: '201',
+      fieldDefinitionId: '501', accessLevel: 'READ_MASKED', status: 'ACTIVE', version: 4}]
+  }, ['system:field-rule:read'])
+  render(<ConstraintPage />, test)
+  await screen.findByText('READ_MASKED')
+  expect(screen.getByText('501')).toBeInTheDocument()
+  expect(test.request).toHaveBeenCalledExactlyOnceWith('/api/tianquan-jianshen/v1/iam/policies/field-rules', {})
+  expect(screen.queryByRole('button', {name: /新\s*增|编\s*辑/})).not.toBeInTheDocument()
+})

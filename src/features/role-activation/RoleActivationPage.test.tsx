@@ -6,6 +6,7 @@ import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import type {PropsWithChildren} from 'react'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {type FeatureApiClient, FeatureApiProvider} from '../shared/FeatureApi'
+import {AuthenticationShell} from '../auth/AuthenticationShell'
 import {gatewayAuth} from '../auth/gatewayAuth'
 import {RoleActivationPage} from './RoleActivationPage'
 
@@ -35,6 +36,33 @@ describe('role activation page', () => {
     await waitFor(() => expect(replaceActiveRoles).toHaveBeenCalledWith({
         roleIds: ['11', '12'], expectedAuthVersion: 2,
     }, expect.any(AbortSignal)))
+  })
+
+  it('reads the current root set after an uncertain replacement without replaying the write', async () => {
+    const replaceActiveRoles = vi.fn<Rbac3Client['replaceActiveRoles']>().mockRejectedValue(
+      new Rbac3RequestError({status: 503, code: 'AUTH_RUNTIME_UNAVAILABLE', message: 'unavailable', retryable: true}),
+    )
+    const readVersion = vi.fn().mockReturnValueOnce(2).mockReturnValue(3)
+    render(<RoleActivationPage />, {wrapper: wrapper(replaceActiveRoles, readVersion)})
+    await screen.findByText('订单管理员')
+    fireEvent.click(screen.getByRole('checkbox', {name: /订单复核员/}))
+    fireEvent.click(screen.getByRole('button', {name: '激活所选角色'}))
+    await screen.findByRole('button', {name: '确认已核对当前集合'})
+    await screen.findByText('orders: 12')
+    expect(screen.getByRole('button', {name: /激活所选角色/})).toBeDisabled()
+    expect(readVersion).toHaveBeenCalledTimes(2)
+    expect(replaceActiveRoles).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows server-side DSD refusal without retrying the mutation', async () => {
+    const replaceActiveRoles = vi.fn<Rbac3Client['replaceActiveRoles']>().mockRejectedValue(
+      new Rbac3RequestError({status: 409, code: 'APP_ROLE_ACTIVATION_MUTEX_VIOLATION', message: 'DSD', retryable: false}),
+    )
+    render(<RoleActivationPage />, {wrapper: wrapper(replaceActiveRoles)})
+    await screen.findByText('订单管理员')
+    fireEvent.click(screen.getByRole('button', {name: '激活所选角色'}))
+    expect(await screen.findByText(/APP_ROLE_ACTIVATION_MUTEX_VIOLATION/)).toBeInTheDocument()
+    expect(replaceActiveRoles).toHaveBeenCalledTimes(1)
   })
 
   it('requests reauthentication without storing or replaying a role mutation', async () => {
@@ -76,7 +104,7 @@ describe('role activation page', () => {
   })
 })
 
-const wrapper = (replaceActiveRoles: Rbac3Client['replaceActiveRoles']) => ({children}: PropsWithChildren) => {
+const wrapper = (replaceActiveRoles: Rbac3Client['replaceActiveRoles'], readVersion = () => 2) => ({children}: PropsWithChildren) => {
   const candidates = {
       applications: [{
           applicationId: '71', applicationCode: 'orders', candidates: [
@@ -118,15 +146,19 @@ const wrapper = (replaceActiveRoles: Rbac3Client['replaceActiveRoles']) => ({chi
     snapshotChecksum: 'old',
   }
   const sdk = createAuthorizationFixtureClient({subject:'mario',tenantId:'9',permissionCodes:['system:role-activation:use'],authVersion:2,policyVersion:3}, {getActivationCandidates: async () => candidates,getActiveRoles: async () => activeRoles,replaceActiveRoles}) as unknown as Rbac3Client
+  const currentRoleSet = () => {
+    const authVersion = readVersion()
+    return authVersion === 2 ? activeRoles : {...activeRoles, authVersion, activeRoles: [{applicationCode: 'orders', rootRoleIds: ['12']}]}
+  }
   const api: FeatureApiClient = {
     request: async <T,>(path: string) => (
-      path.endsWith('/role-activation-candidates') ? candidates : activeRoles
+      path.endsWith('/role-activation-candidates') ? candidates : currentRoleSet()
     ) as T,
   }
   return (
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <TestAuthorizationProvider client={sdk}>
-        <FeatureApiProvider client={api}>{children}</FeatureApiProvider>
+        <FeatureApiProvider client={api}><AuthenticationShell>{children}</AuthenticationShell></FeatureApiProvider>
       </TestAuthorizationProvider>
     </QueryClientProvider>
   )

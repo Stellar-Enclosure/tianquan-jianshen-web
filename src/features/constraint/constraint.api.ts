@@ -86,6 +86,17 @@ export interface DataRuleView {
   readonly version: number
 }
 
+export interface FieldRuleView {
+  readonly ruleId: string
+  readonly applicationId: string
+  readonly roleId: string
+  readonly permissionId: string
+  readonly fieldDefinitionId: string
+  readonly accessLevel: string
+  readonly status: string
+  readonly version: number
+}
+
 export interface OperationSodRuleView {
   readonly ruleId: string
   readonly applicationCode: string
@@ -123,6 +134,7 @@ export const constraintApi = (client: FeatureApiClient) => ({
     `/api/tianquan-jianshen/v1/iam/policies/data-rules/${encodeURIComponent(ruleId)}`,
     {method: 'PUT', body: command},
   ),
+  fieldRules: () => client.request<readonly FieldRuleView[]>('/api/tianquan-jianshen/v1/iam/policies/field-rules'),
   operationSodRules: () => client.request<readonly OperationSodRuleView[]>('/api/tianquan-jianshen/v1/iam/policies/operation-sod-rules'),
   createOperationSodRule: (command: OperationSodRuleCommand) => client.request<MutationResult>(
     '/api/tianquan-jianshen/v1/iam/policies/operation-sod-rules',
