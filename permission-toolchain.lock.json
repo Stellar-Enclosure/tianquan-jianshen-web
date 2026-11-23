@@ -3,7 +3,7 @@
   "mode": "PINNED_COMMIT",
   "nodeMajor": 24,
   "sdk": {
-    "commit": "cd6695f6d068383c9a764a4b67544b7e131d34de",
+    "commit": "6d6d5e3e6414eb12cffac50b86f3ed95769b1138",
     "sourceDigest": "50357d0094cb44080eaf861c494ddc6635e4ae571c62e0fd0b0bad703914eaa3",
     "dependencyLockSha256": "b57d31973a67dc759f219417081f16c9255432f75e2f4370c583fcd0d12a297f"
   },
