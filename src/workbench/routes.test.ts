@@ -88,8 +88,8 @@ describe('jianshenWorkbenchRoutes', () => {
     for (const descriptor of descriptors) {
       expect(validatePageDescriptor(descriptor)).toBe(true)
     }
-    expect(descriptors.some((item) => item.pattern === '/iam/roles/:roleId/permissions')).toBe(false)
-    expect(descriptors.some((item) => item.pattern === '/iam/users/:userId/role-assignments')).toBe(false)
+    expect(descriptors.find((item) => item.pattern === '/iam/roles/:roleId/permissions')?.identityParams).toEqual(['roleId'])
+    expect(descriptors.find((item) => item.pattern === '/iam/users/:userId/role-assignments')?.identityParams).toEqual(['userId'])
   })
 
   it('uses the backend runtime permission for both overview and runtime and rejects the obsolete alias', () => {
@@ -106,6 +106,24 @@ describe('jianshenWorkbenchRoutes', () => {
       expect(canAccessJianshenRoute(canonical, canonicalBinding, route)).toBe(true)
       expect(canAccessJianshenRoute(obsolete, obsoleteBinding, route)).toBe(false)
     }
+  })
+
+  it('reports only authorized object patterns and excludes them for expired or foreign bindings', () => {
+    const objects = (permissions: readonly string[]) => {
+      const snapshot = permissionSnapshotFixture({permissionCodes: permissions})
+      return buildJianshenCatalogPages(snapshot, snapshotContext(snapshot, 1)).filter(page => page.identityParams.length > 0)
+    }
+    expect(objects(['system:role-permission:read', 'system:permission-catalog:read']))
+      .toEqual([expect.objectContaining({pageId: 'tianquan-jianshen.page.role-permissions', pattern: '/iam/roles/:roleId/permissions', identityParams: ['roleId']})])
+    expect(objects(['system:role-assignment:read']))
+      .toEqual([expect.objectContaining({pageId: 'tianquan-jianshen.page.assignments', pattern: '/iam/users/:userId/role-assignments', identityParams: ['userId']})])
+    expect(objects(['system:role-permission:read'])).toEqual([])
+    expect(objects(['system:permission-catalog:read'])).toEqual([])
+    expect(objects(['system:role:read', 'system:user:read'])).toEqual([])
+    const snapshot = permissionSnapshotFixture({permissionCodes: [...FULL_PERMISSIONS]})
+    const binding = snapshotContext(snapshot, 1)
+    expect(buildJianshenCatalogPages({...snapshot, snapshotExpiresAt: '2025-01-01T00:00:00Z'}, binding)).toEqual([])
+    expect(buildJianshenCatalogPages(snapshot, {...binding, subject: 'other-subject'})).toEqual([])
   })
 
   it('matches static and parameterized routes cleanly and preserves identity params', () => {

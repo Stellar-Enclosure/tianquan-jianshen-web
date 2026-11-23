@@ -5,7 +5,7 @@ import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianqu
 import {PageState, WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {Button, Card, Descriptions, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography} from 'antd'
 import {useState} from 'react'
-import {Link} from 'react-router-dom'
+import {WorkbenchObjectLink} from '../../workbench/WorkbenchObjectLink'
 import {permissionContextKey} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
 import {useFeatureApi, useFeatureTenantContext} from '../shared/FeatureApi'
 import {
@@ -190,7 +190,7 @@ const UserDirectory = ({initialUserId, contextKey}: {initialUserId: string; cont
                   <Descriptions.Item label="目录快照版本">{displayUser.directorySnapshotVersion ?? '-'}</Descriptions.Item>
                 </Descriptions>
                 <ResourceGuard resourceKey="tianquan-jianshen.page.assignments">
-                  <Link to={`/iam/users/${encodeURIComponent(displayUser.userId)}/role-assignments`}>角色任职</Link>
+                  <WorkbenchObjectLink to={`/iam/users/${encodeURIComponent(displayUser.userId)}/role-assignments`}>角色任职</WorkbenchObjectLink>
                 </ResourceGuard>
                 <UserRelationsPanel userId={displayUser.userId} authVersion={displayUser.authVersion} />
               </>
@@ -269,7 +269,7 @@ const UserDirectory = ({initialUserId, contextKey}: {initialUserId: string; cont
                     <Space>
                       <Button size="small" onClick={() => { setUserId(user.userId); setDraftUserId(user.userId) }}>详情</Button>
                       <ResourceGuard resourceKey="tianquan-jianshen.page.assignments">
-                        <Link to={`/iam/users/${encodeURIComponent(user.userId)}/role-assignments`}>角色任职</Link>
+                        <WorkbenchObjectLink to={`/iam/users/${encodeURIComponent(user.userId)}/role-assignments`}>角色任职</WorkbenchObjectLink>
                       </ResourceGuard>
                       <ResourceGuard resourceKey="tianquan-jianshen.button.UserDirectoryPage.manage2">
                         <Button size="small" onClick={() => openEdit(user)}>编辑绑定</Button>

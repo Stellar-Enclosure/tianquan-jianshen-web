@@ -103,8 +103,10 @@ export const buildJianshenCatalogPages = (
 
   const descriptors: AppPageDescriptor[] = []
   for (const route of jianshenWorkbenchRoutes) {
-    if (route.hideFromNav) continue
-    if (!visiblePageKeys.has(route.resourceKey)) continue
+    // Parameterized object pages are resolvable tabs, even though they are not menu entries.
+    if (route.hideFromNav) {
+      if (route.identityParams.length === 0) continue
+    } else if (!visiblePageKeys.has(route.resourceKey)) continue
     if (!canAccessJianshenRoute(snapshot, binding, route)) continue
     descriptors.push({
       pageId: route.pageId,

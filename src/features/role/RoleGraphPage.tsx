@@ -4,7 +4,7 @@ import {roleEditReferences} from '../../permissions/resources'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Alert, Button, Descriptions, Drawer, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, Typography} from 'antd'
 import {useEffect, useRef, useState} from 'react'
-import {Link} from 'react-router-dom'
+import {WorkbenchObjectLink} from '../../workbench/WorkbenchObjectLink'
 import {useRbac3Authorization} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {ApiError, PageState, WorkspaceList, useEmbeddedWorkbench} from '@stellar-enclosure/stellar-enclosure-web-shared'
 import {permissionContextKey} from '@stellar-enclosure/stellar-enclosure-web-shared/permissions'
@@ -339,7 +339,9 @@ const RoleGraph = ({applicationId, contextKey}: RoleGraphPageProps & {contextKey
                     <Button size="small" onClick={() => openInheritance(role)}>继承管理</Button>
                   </ResourceGuard>
                   <ResourceGuard resourceKey="tianquan-jianshen.button.RoleGraphPage.read1">
-                    <Link to={`/iam/roles/${encodeURIComponent(role.roleId)}/permissions`}>权限字符授权</Link>
+                    <ResourceGuard resourceKey="tianquan-jianshen.page.role-permissions">
+                      <WorkbenchObjectLink to={`/iam/roles/${encodeURIComponent(role.roleId)}/permissions`}>权限字符授权</WorkbenchObjectLink>
+                    </ResourceGuard>
                   </ResourceGuard>
                 </Space>
               )},

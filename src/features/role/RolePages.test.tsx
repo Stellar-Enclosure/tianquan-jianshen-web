@@ -13,7 +13,7 @@ import {roleApi} from './role.api'
 
 const createWrapper = (detailRequest?: (request?: FeatureApiRequest) => Promise<unknown>) => ({children}: PropsWithChildren) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const sdk = createAuthorizationFixtureClient({subject:'role-test',tenantId:'42',permissionCodes:['system:role:read', 'system:role:create', 'system:role:update', 'system:role-permission:read'],authVersion:1,policyVersion:1}, {}) as unknown as Rbac3Client
+  const sdk = createAuthorizationFixtureClient({subject:'role-test',tenantId:'42',permissionCodes:['system:role:read', 'system:role:create', 'system:role:update', 'system:role-permission:read', 'system:permission-catalog:read'],authVersion:1,policyVersion:1}, {}) as unknown as Rbac3Client
   const api: FeatureApiClient = {
     request: async <T,>(path: string, request?: FeatureApiRequest) => {
       if (detailRequest && path === '/api/tianquan-jianshen/v1/iam/roles/2') return await detailRequest(request) as T
