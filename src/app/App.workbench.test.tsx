@@ -1,4 +1,4 @@
-import {act, render, screen, waitFor} from '@testing-library/react'
+import {act, fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {Rbac3RequestError} from '@stellar-enclosure/stellar-enclosure-tianquan-jianshen-react-sdk'
 import {AuthRequestContext, type AppCatalogUpdate, type WorkbenchHost, type WorkbenchPort} from '@stellar-enclosure/stellar-enclosure-web-shared'
@@ -100,6 +100,31 @@ describe('App workbench authorization handshake', () => {
     expect(f.catalogs.at(-1)).toMatchObject({status: 'failed', pages: []})
     expect(f.ports).toEqual([port])
     expect(f.featureRequest).not.toHaveBeenCalled()
+  })
+
+  it('clears expired routes without terminating the attached workbench and reports READY after recovery', async () => {
+    vi.useFakeTimers({toFake: ['Date', 'setTimeout', 'clearTimeout']})
+    const f = fixture()
+    const snapshot = {...f.snapshot, snapshotExpiresAt: new Date(Date.now() + 30_000).toISOString()}
+    const renewed = deferred<PermissionSnapshot>()
+    f.getPermissionSnapshot.mockReset().mockReturnValueOnce(f.bootstrap.promise)
+      .mockResolvedValueOnce(snapshot).mockReturnValue(renewed.promise)
+    render(<App embedded workbenchHost={f.host} />)
+    await act(async () => {f.bootstrap.resolve(snapshot); f.about.resolve(await f.sdk.getAbout())})
+    expect(f.catalogs.at(-1)).toMatchObject({status: 'ready'})
+    const port = f.ports[0]
+
+    await act(async () => {await vi.advanceTimersByTimeAsync(30_001)})
+    expect(screen.getByText('PERMISSION_SNAPSHOT_EXPIRED')).toBeInTheDocument()
+    expect(f.catalogs.at(-1)).toMatchObject({status: 'authorizing', pages: []})
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', {name: /^重\s*试$/}))
+      renewed.resolve({...snapshot, snapshotExpiresAt: new Date(Date.now() + 30_000).toISOString()})
+    })
+    expect(f.ports).toEqual([port])
+    expect(f.catalogs.at(-1)).toMatchObject({status: 'ready'})
+    expect(f.catalogs.at(-1)?.pages.map(page => page.pattern)).toEqual(['/iam/organizations'])
   })
 
   it('clears a ready catalog and reports denied after a native 403', async () => {

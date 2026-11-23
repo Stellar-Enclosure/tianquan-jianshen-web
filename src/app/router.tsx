@@ -76,13 +76,16 @@ export const useWorkbenchCatalogReset = () => {
 }
 
 export const JianshenCatalogReporter = () => {
-  const {status, about, snapshot, binding} = useRbac3Authorization()
+  const {status, errorCode, about, snapshot, binding} = useRbac3Authorization()
   const publish = useContext(WorkbenchCatalogContext)
   const pages = useMemo(
     () => (status === 'READY' && about && snapshot && binding ? buildJianshenCatalogPages(snapshot, binding) : emptyPages),
     [status, about, snapshot, binding],
   )
-  const catalogStatus: AppCatalogStatus = status === 'ERROR_RETRYABLE' || status === 'ERROR_FATAL'
+  // An expired snapshot clears routes while renewal can still recover on the attached port.
+  const recoveringSnapshot = status === 'ERROR_RETRYABLE' && errorCode === 'PERMISSION_SNAPSHOT_EXPIRED'
+  const catalogStatus: AppCatalogStatus = recoveringSnapshot ? 'authorizing'
+    : status === 'ERROR_RETRYABLE' || status === 'ERROR_FATAL'
     ? 'failed'
     : status === 'FORBIDDEN_NO_ROUTE'
       ? 'denied'
